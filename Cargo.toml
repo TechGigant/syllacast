@@ -7,7 +7,7 @@ default-members = ["."]
 
 [package]
 name = "syllacast"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["TechGigant", "Spikerko (Spicy Lyrics)"]
 license = "AGPL-3.0-or-later"

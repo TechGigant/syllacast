@@ -370,7 +370,10 @@ function frameLoop() {
   if (settingsDialog && settingsDialog.style.display !== "none") {
     const diag = clockSync.getDiagnostics();
     if (diagRtt) diagRtt.textContent = `${diag.rttMs.toFixed(1)} ms`;
-    if (diagOffset) diagOffset.textContent = `${diag.offsetMs.toFixed(1)} ms`;
+    if (diagOffset) {
+      const sign = diag.offsetMs > 0 ? "+" : "";
+      diagOffset.textContent = `${sign}${diag.offsetMs.toFixed(1)} ms`;
+    }
   }
 
   requestAnimationFrame(frameLoop);

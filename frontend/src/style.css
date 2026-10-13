@@ -233,4 +233,54 @@ html, body {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
 
+/* Settings overlay action link */
+.settings-full-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  background: rgba(255, 51, 102, 0.16);
+  border: 1px solid rgba(255, 51, 102, 0.4);
+  color: #ffffff;
+  text-decoration: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.settings-full-btn:hover {
+  background: rgba(255, 51, 102, 0.28);
+  border-color: rgba(255, 51, 102, 0.7);
+  box-shadow: 0 0 16px rgba(255, 51, 102, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.settings-full-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.settings-full-btn svg {
+  color: #ff3366;
+  flex-shrink: 0;
+}
+
+.settings-full-btn__arrow {
+  margin-left: auto;
+  font-size: 0.95rem;
+  opacity: 0.75;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.settings-full-btn:hover .settings-full-btn__arrow {
+  transform: translateX(3px);
+  opacity: 1;
+}
+
+
 

@@ -88,8 +88,13 @@ export class ClockSync {
 
   getDiagnostics() {
     const latestRtt = this.samples.length > 0 ? this.samples[this.samples.length - 1].rttMs : 0;
+    const timeOrigin =
+      typeof performance !== "undefined" && typeof performance.timeOrigin === "number"
+        ? performance.timeOrigin
+        : Date.now() - performance.now();
+    const clockSkewMs = this.currentOffsetMs !== 0 ? this.currentOffsetMs - timeOrigin : 0;
     return {
-      offsetMs: this.currentOffsetMs,
+      offsetMs: clockSkewMs,
       rttMs: latestRtt,
       sampleCount: this.samples.length,
     };
