@@ -582,7 +582,12 @@ fn render_ui(frame: &mut Frame, state: &AppState) {
 }
 
 fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
-    let banner_text = theme::ASCII_BANNER;
+    let banner_lines = if area.width >= 78 {
+        theme::ASCII_BANNER
+    } else {
+        theme::ASCII_BANNER_SMALL
+    };
+
     let status_badge = if state.existing.is_service_active {
         Span::styled(
             " ● ACTIVE ",
@@ -617,13 +622,17 @@ fn render_header(frame: &mut Frame, area: Rect, state: &AppState) {
         status_badge,
     ]);
 
-    let header_lines = vec![
-        Line::from(Span::styled(
-            banner_text,
-            Style::default().fg(theme::SPOTIFY_GREEN),
-        )),
-        title_line,
-    ];
+    let mut header_lines: Vec<Line> = banner_lines
+        .iter()
+        .map(|line| {
+            Line::from(Span::styled(
+                *line,
+                Style::default().fg(theme::SPOTIFY_GREEN),
+            ))
+        })
+        .collect();
+
+    header_lines.push(title_line);
 
     let p = Paragraph::new(header_lines).alignment(Alignment::Center);
     frame.render_widget(p, area);
