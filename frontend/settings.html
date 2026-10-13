@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Syllacast - Display Settings</title>
+    <link rel="stylesheet" href="https://fonts.spikerko.org/spicy-lyrics/source.css" />
+    <style>
+      :root {
+        --bg-color: #0d0d0f;
+        --card-bg: rgba(255, 255, 255, 0.05);
+        --card-border: rgba(255, 255, 255, 0.1);
+        --accent: #ff3366;
+        --accent-hover: #ff4d7d;
+        --text: #ffffff;
+        --text-muted: rgba(255, 255, 255, 0.6);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        padding: 24px 16px;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 580px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--card-border);
+      }
+
+      h1 {
+        font-size: 1.4rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .badge {
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: rgba(46, 204, 113, 0.15);
+        color: #2ecc71;
+        border: 1px solid rgba(46, 204, 113, 0.3);
+      }
+
+      .section-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 18px;
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+
+      .section-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        margin-bottom: 14px;
+      }
+
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .setting-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .setting-row:first-of-type {
+        padding-top: 0;
+      }
+
+      .setting-info {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding-right: 16px;
+      }
+
+      .setting-label {
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      .setting-desc {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        line-height: 1.35;
+      }
+
+      /* Switch styling */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 28px;
+        flex-shrink: 0;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider-toggle {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.15);
+        transition: 0.3s;
+        border-radius: 28px;
+      }
+
+      .slider-toggle:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+      }
+
+      input:checked + .slider-toggle {
+        background-color: var(--accent);
+      }
+
+      input:checked + .slider-toggle:before {
+        transform: translateX(20px);
+      }
+
+      /* Select styling */
+      select {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        outline: none;
+      }
+
+      select option {
+        background: #1a1a1f;
+        color: #fff;
+      }
+
+      /* Range slider */
+      .range-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 0;
+      }
+
+      .range-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.88rem;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #2ecc71;
+      }
+
+      .btn-action {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .btn-action:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .btn-primary:hover {
+        background: var(--accent-hover);
+      }
+
+      .btn-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: color 0.2s;
+      }
+
+
+      .btn-back:hover {
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div>
+          <a href="/" class="btn-back">← Back to Lyrics Screen</a>
+          <h1 style="margin-top: 4px;">Syllacast Display Control</h1>
+        </div>
+        <span class="badge" id="save-badge">Live Synced</span>
+      </header>
+
+      <!-- Section 1: UI Buttons & Mode -->
+      <div class="section-card">
+        <div class="section-title">Screen Controls & Mode</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Show UI Buttons on Lyrics Screen</span>
+            <span class="setting-desc">Turn off to completely hide floating buttons (NowBar, Romanization, Settings) for a clean kiosk appearance.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="show_controls_buttons" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Display Mode</span>
+            <span class="setting-desc">Standard split view with NowBar vs Fullscreen Cinema view.</span>
+          </div>
+          <select id="startup_mode">
+            <option value="standard">Standard View</option>
+            <option value="cinema">Cinema Fullscreen</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">NowBar Open</span>
+            <span class="setting-desc">Show or hide the cover art and metadata sidebar.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="nowbar_open" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">NowBar Position</span>
+            <span class="setting-desc">Place the NowBar on the left or right side of the screen.</span>
+          </div>
+          <select id="nowbar_side">
+            <option value="left">Left Side</option>
+            <option value="right">Right Side</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Section 2: Kiosk Overlays -->
+      <div class="section-card">
+        <div class="section-title">Kiosk Overlays</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Top Digital Clock</span>
+            <span class="setting-desc">Live HH:MM:SS digital clock capsule in the top-left corner.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="clock_enabled" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">"Up Next" Queue Card</span>
+            <span class="setting-desc">Floating card in the bottom-right corner showing upcoming track preview.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="up_next_enabled" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Bottom-Left Lyrics Source</span>
+            <span class="setting-desc">Shows "Lyrics provided by..." attribution at the bottom-left of the screen.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="lyrics_source_enabled" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Bottom-Right Source Code Link</span>
+            <span class="setting-desc">Shows the Syllacast AGPL-3.0 GitHub repository link at the bottom-right of the screen.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="source_link_enabled" />
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section 3: Audio & Sync -->
+      <div class="section-card">
+        <div class="section-title">Audio & Sync Timing</div>
+
+        <div class="range-container">
+          <div class="range-header">
+            <span class="setting-label">Calibration Offset</span>
+            <span id="calib-val" style="font-weight: 700; color: var(--accent);">0 ms</span>
+          </div>
+          <span class="setting-desc">Fine-tune syllable highlight timing (+ for later, - for earlier).</span>
+          <input type="range" id="calibration_offset_ms" min="-500" max="500" step="10" value="0" />
+        </div>
+      </div>
+
+      <!-- Section 4: Background -->
+      <div class="section-card">
+        <div class="section-title">Background & Visuals</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Dynamic Background Mode</span>
+            <span class="setting-desc">WebGL fluid canvas powered by @kawarp/core.</span>
+          </div>
+          <select id="dynamic_bg_mode">
+            <option value="dynamic">Dynamic Fluid (WebGL)</option>
+            <option value="static">Static Blurred Artwork</option>
+            <option value="color">Static Color</option>
+            <option value="off">Off (Pitch Black)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Section 5: Updates & Maintenance -->
+      <div class="section-card">
+        <div class="section-title">Updates & Maintenance</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Installed Version</span>
+            <span class="setting-desc" id="update-current-version">Checking version...</span>
+          </div>
+          <span class="badge" id="update-status-badge">Checking...</span>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Update Behavior</span>
+            <span class="setting-desc">Choose between toast pop-ups, automatic installation when idle, or disabled.</span>
+          </div>
+          <select id="update_mode">
+            <option value="notify">Notify with Pop-up (Default)</option>
+            <option value="auto">Automatic (Install when idle)</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Check Frequency</span>
+            <span class="setting-desc">How often Syllacast checks GitHub Releases in the background.</span>
+          </div>
+          <select id="update_check_interval_hours">
+            <option value="6">Every 6 Hours</option>
+            <option value="12">Every 12 Hours</option>
+            <option value="24">Every 24 Hours (Default)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Release Channel</span>
+            <span class="setting-desc">Select release channel.</span>
+          </div>
+          <select id="update_channel">
+            <option value="stable">Stable Releases (Default)</option>
+            <option value="prerelease">Include Pre-releases</option>
+          </select>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button id="btn-check-updates" class="btn-action">🔍 Check for Updates</button>
+            <button id="btn-apply-update" class="btn-action btn-primary" style="display: none;">🚀 Install Update Now</button>
+          </div>
+          <span id="update-status-msg" style="font-size: 0.8rem; color: var(--text-muted);"></span>
+        </div>
+
+        <div id="update-notes-box" style="display: none; margin-top: 14px; padding: 12px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 1px solid var(--card-border); font-size: 0.82rem; color: var(--text-muted); line-height: 1.45;">
+          <div style="font-weight: 700; color: #fff; margin-bottom: 4px;" id="update-notes-title">Release Notes</div>
+          <div id="update-notes-content" style="white-space: pre-line;"></div>
+        </div>
+      </div>
+
+      <!-- Section 6: About & Attributions -->
+      <div class="section-card">
+        <div class="section-title">About & Attributions</div>
+
+
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85rem; line-height: 1.5; color: var(--text-muted);">
+          <div>
+            <strong style="color: #fff;">Syllacast</strong> is an open-source Spotify lyrics kiosk display service licensed under the
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.75rem; font-weight: 600;">GNU AGPLv3</span>.
+          </div>
+
+          <div>
+            Lyrics rendering engine, dynamic animations, and typography derived from
+            <a href="https://github.com/Spikerko/spicy-lyrics" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Spicy Lyrics</a>
+            by <strong style="color: #fff;">Spikerko</strong>.
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+            <a href="https://github.com/TechGigant/syllacast" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); color: #fff; text-decoration: none; font-size: 0.8rem; border: 1px solid var(--card-border);">
+              <span>📦 Source Code</span>
+            </a>
+            <a href="https://ko-fi.com/spikerko" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: rgba(255, 51, 102, 0.15); color: #ff3366; text-decoration: none; font-size: 0.8rem; border: 1px solid rgba(255, 51, 102, 0.3);">
+              <span>☕ Support Spikerko (Ko-fi)</span>
+            </a>
+            <a href="https://discord.gg/lyrc" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); color: #5865F2; text-decoration: none; font-size: 0.8rem; border: 1px solid rgba(88, 101, 242, 0.3);">
+              <span>💬 Spicy Lyrics Discord</span>
+            </a>
+          </div>
+
+          <div style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4); margin-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 8px;">
+            This software is provided "as is" without warranty of any kind. Under AGPL-3.0 §13, remote network users have the right to receive the Corresponding Source code free of charge.
+          </div>
+        </div>
+      </div>
+
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span>Settings apply instantly to all connected kiosk displays.</span>
+      </div>
+    </div>
+
+    <script>
+      let currentSettings = {};
+      const badge = document.getElementById("save-badge");
+
+      async function fetchSettings() {
+        try {
+          const res = await fetch("/api/settings");
+          if (!res.ok) throw new Error("HTTP error " + res.status);
+          currentSettings = await res.json();
+          renderForm(currentSettings);
+        } catch (e) {
+          console.error("Failed to fetch settings:", e);
+          badge.textContent = "Offline";
+          badge.style.color = "#e74c3c";
+        }
+      }
+
+      function renderForm(settings) {
+        document.getElementById("show_controls_buttons").checked = !!settings.show_controls_buttons;
+        document.getElementById("startup_mode").value = settings.startup_mode || "standard";
+        document.getElementById("nowbar_open").checked = settings.nowbar_open !== false;
+        document.getElementById("nowbar_side").value = settings.nowbar_side || "left";
+        document.getElementById("clock_enabled").checked = settings.clock_enabled !== false;
+        document.getElementById("up_next_enabled").checked = settings.up_next_enabled !== false;
+        document.getElementById("lyrics_source_enabled").checked = settings.lyrics_source_enabled !== false;
+        document.getElementById("source_link_enabled").checked = settings.source_link_enabled !== false;
+        document.getElementById("calibration_offset_ms").value = settings.calibration_offset_ms || 0;
+        document.getElementById("calib-val").textContent = `${settings.calibration_offset_ms || 0} ms`;
+        document.getElementById("dynamic_bg_mode").value = settings.dynamic_bg_mode || "dynamic";
+        document.getElementById("update_mode").value = settings.update_mode || "notify";
+        document.getElementById("update_check_interval_hours").value = settings.update_check_interval_hours || 24;
+        document.getElementById("update_channel").value = settings.update_channel || "stable";
+      }
+
+      async function saveSettings() {
+        badge.textContent = "Saving...";
+        badge.style.color = "#f39c12";
+
+        const updated = {
+          show_controls_buttons: document.getElementById("show_controls_buttons").checked,
+          startup_mode: document.getElementById("startup_mode").value,
+          nowbar_open: document.getElementById("nowbar_open").checked,
+          nowbar_side: document.getElementById("nowbar_side").value,
+          clock_enabled: document.getElementById("clock_enabled").checked,
+          up_next_enabled: document.getElementById("up_next_enabled").checked,
+          lyrics_source_enabled: document.getElementById("lyrics_source_enabled").checked,
+          source_link_enabled: document.getElementById("source_link_enabled").checked,
+          calibration_offset_ms: parseInt(document.getElementById("calibration_offset_ms").value, 10),
+          dynamic_bg_mode: document.getElementById("dynamic_bg_mode").value,
+          update_mode: document.getElementById("update_mode").value,
+          update_check_interval_hours: parseInt(document.getElementById("update_check_interval_hours").value, 10),
+          update_channel: document.getElementById("update_channel").value,
+        };
+
+        try {
+          const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updated),
+          });
+          if (!res.ok) throw new Error("HTTP error " + res.status);
+          currentSettings = await res.json();
+          badge.textContent = "Saved & Applied!";
+          badge.style.color = "#2ecc71";
+          setTimeout(() => {
+            badge.textContent = "Live Synced";
+          }, 1500);
+        } catch (e) {
+          console.error("Failed to save settings:", e);
+          badge.textContent = "Error Saving";
+          badge.style.color = "#e74c3c";
+        }
+      }
+
+      // Updates subsystem UI
+      const updateBadge = document.getElementById("update-status-badge");
+      const currentVerEl = document.getElementById("update-current-version");
+      const updateMsg = document.getElementById("update-status-msg");
+      const btnCheckUpdates = document.getElementById("btn-check-updates");
+      const btnApplyUpdate = document.getElementById("btn-apply-update");
+      const notesBox = document.getElementById("update-notes-box");
+      const notesContent = document.getElementById("update-notes-content");
+
+      async function fetchUpdateStatus() {
+        try {
+          const res = await fetch("/api/updates/status");
+          if (!res.ok) throw new Error("HTTP error " + res.status);
+          const data = await res.json();
+          renderUpdateStatus(data);
+        } catch (e) {
+          console.error("Failed to fetch update status:", e);
+        }
+      }
+
+      function renderUpdateStatus(data) {
+        currentVerEl.textContent = `v${data.current_version}`;
+
+        if (data.status === "available" && data.update_available) {
+          const u = data.update_available;
+          updateBadge.textContent = `v${u.latest_version} Available!`;
+          updateBadge.style.background = u.is_critical_security_update ? "rgba(255, 51, 102, 0.25)" : "rgba(243, 156, 18, 0.2)";
+          updateBadge.style.color = u.is_critical_security_update ? "#ff3366" : "#f39c12";
+          updateBadge.style.borderColor = u.is_critical_security_update ? "#ff3366" : "#f39c12";
+
+          btnApplyUpdate.style.display = "inline-flex";
+          btnApplyUpdate.textContent = u.is_critical_security_update ? "🛡️ Install Security Update Now" : "🚀 Install Update Now";
+
+          if (u.release_notes) {
+            notesBox.style.display = "block";
+            notesContent.textContent = u.release_notes;
+          }
+        } else if (data.status === "downloading" || data.status === "verifying" || data.status === "installing") {
+          updateBadge.textContent = "Updating...";
+          updateBadge.style.background = "rgba(52, 152, 219, 0.2)";
+          updateBadge.style.color = "#3498db";
+          updateBadge.style.borderColor = "#3498db";
+          btnApplyUpdate.disabled = true;
+          btnApplyUpdate.textContent = `Updating (${data.progress_percent || 0}%)...`;
+        } else if (data.status === "restarting") {
+          updateBadge.textContent = "Restarting...";
+          updateBadge.style.color = "#2ecc71";
+          btnApplyUpdate.textContent = "Restarting Service...";
+          setTimeout(() => window.location.reload(), 4000);
+        } else {
+          updateBadge.textContent = "Up to Date";
+          updateBadge.style.background = "rgba(46, 204, 113, 0.15)";
+          updateBadge.style.color = "#2ecc71";
+          updateBadge.style.borderColor = "rgba(46, 204, 113, 0.3)";
+          btnApplyUpdate.style.display = "none";
+          notesBox.style.display = "none";
+        }
+      }
+
+      btnCheckUpdates?.addEventListener("click", async () => {
+        btnCheckUpdates.disabled = true;
+        btnCheckUpdates.textContent = "Checking...";
+        updateMsg.textContent = "Querying GitHub Releases...";
+        try {
+          const res = await fetch("/api/updates/check", { method: "POST" });
+          const data = await res.json();
+          renderUpdateStatus(data);
+          updateMsg.textContent = data.status === "available" ? "New release available!" : "You are on the latest version.";
+        } catch (e) {
+          updateMsg.textContent = "Check failed: " + String(e);
+        } finally {
+          btnCheckUpdates.disabled = false;
+          btnCheckUpdates.textContent = "🔍 Check for Updates";
+        }
+      });
+
+      btnApplyUpdate?.addEventListener("click", async () => {
+        btnApplyUpdate.disabled = true;
+        btnApplyUpdate.textContent = "Starting Update...";
+        updateMsg.textContent = "Downloading and applying release...";
+        try {
+          await fetch("/api/updates/apply", { method: "POST" });
+          updateBadge.textContent = "Updating...";
+        } catch (e) {
+          updateMsg.textContent = "Apply failed: " + String(e);
+          btnApplyUpdate.disabled = false;
+        }
+      });
+
+      // Attach event listeners for real-time saving
+      document.querySelectorAll("input[type='checkbox'], select").forEach((el) => {
+        el.addEventListener("change", saveSettings);
+      });
+
+      const calibSlider = document.getElementById("calibration_offset_ms");
+      const calibVal = document.getElementById("calib-val");
+      calibSlider.addEventListener("input", () => {
+        calibVal.textContent = `${calibSlider.value} ms`;
+      });
+      calibSlider.addEventListener("change", saveSettings);
+
+      fetchSettings();
+      fetchUpdateStatus();
+
+    </script>
+  </body>
+</html>

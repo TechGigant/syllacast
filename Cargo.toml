@@ -1,0 +1,50 @@
+[workspace]
+members = [
+    ".",
+    "xtask",
+]
+default-members = ["."]
+
+[package]
+name = "syllacast"
+version = "1.0.0"
+edition = "2021"
+authors = ["TechGigant", "Spikerko (Spicy Lyrics)"]
+license = "AGPL-3.0-or-later"
+description = "Network-synchronized Spotify lyrics display server for Spotify Soloist and standalone displays"
+repository = "https://github.com/TechGigant/syllacast"
+homepage = "https://github.com/TechGigant/syllacast"
+readme = "README.md"
+keywords = ["spotify", "lyrics", "kiosk", "karaoke", "syllacast"]
+categories = ["command-line-utilities", "multimedia"]
+
+[dependencies]
+tokio = { version = "1.43", features = ["full"] }
+tokio-tungstenite = { version = "0.26", features = ["connect"] }
+axum = { version = "0.8", features = ["ws"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "7.0"
+rust-embed = { version = "8.13", features = ["interpolate-folder-path"] }
+mime_guess = "2.0"
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+flate2 = "1.0"
+tar = "0.4"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

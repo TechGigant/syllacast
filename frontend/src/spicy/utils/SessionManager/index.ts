@@ -1,0 +1,30 @@
+/*
+ * Syllacast - Standalone Spotify Lyrics Kiosk
+ * Portions derived from Spicy Lyrics (https://github.com/Spikerko/spicy-lyrics)
+ *
+ * Copyright (C) 2026 Spikerko
+ * Copyright (C) 2026 TechGigant
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+import App from "../app.ts";
+import Logger from "../Logger.ts";
+import { SessionManager } from "./SessionManager.ts";
+
+export const sessionManager = new SessionManager();
+
+export async function initSession(): Promise<void> {
+  if (App.isDev()) {
+    new Logger("SessionManager").info("Dev build — skipping session creation");
+    return;
+  }
+  await sessionManager.ensureSession();
+}
+
+export type { SessionState } from "./types.ts";

@@ -1,0 +1,193 @@
+/* Spicy Lyrics 1:1 Stylesheet Bundle */
+@import "./css/tokens.css";
+@import "./css/primitives.css";
+@import "./css/default.css";
+@import "./css/ContentBox.css";
+@import "./css/Lyrics/main.css";
+@import "./css/Lyrics/Mixed.css";
+@import "./css/DynamicBG/spicy-dynamic-bg.css";
+@import "./css/Simplebar.css";
+@import "./css/Loaders/LoaderContainer.css";
+@import "./css/Loaders/DotLoader.css";
+@import "./css/Loaders/LyricsSkeleton.css";
+
+/* Explicitly hide experimental skeleton text so it never leaks as raw black text */
+#SpicyLyricsPage .LyricsContainer .LyricsSkeleton,
+.LyricsSkeleton {
+  display: none !important;
+}
+
+/* Base page rules */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #000;
+  font-family: SpicyLyrics, "Noto Sans Georgian", "VazirmatnRegular", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+#SpicyLyricsPage {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  position: relative;
+}
+
+/* Hide Close button on standalone kiosk */
+#SpicyLyricsPage .ContentBox > .ViewControls #Close {
+  display: none !important;
+}
+
+/* ViewControls floating pills */
+#SpicyLyricsPage .ContentBox > .ViewControls {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  height: 38px;
+  width: auto;
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+  opacity: 0.85;
+  transition: opacity 0.25s ease;
+}
+
+#SpicyLyricsPage .ContentBox > .ViewControls:hover {
+  opacity: 1;
+}
+
+#SpicyLyricsPage .ContentBox > .ViewControls .ViewControl {
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+/* Fallback padding so lyrics never collide with NowBar or window edges on any resolution */
+#SpicyLyricsPage .ContentBox .NowBar.Active.LeftSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.NowBarStatus__Open.NowBarSide__Left .SpicyLyricsScrollContainer {
+  padding-left: var(--LyricsLeftSidePadding, 48cqw) !important;
+  padding-right: max(var(--LyricsRightSidePadding, 6cqw), 6cqw, 36px) !important;
+}
+
+#SpicyLyricsPage .ContentBox .NowBar.Active.LeftSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines,
+#SpicyLyricsPage.NowBarStatus__Open.NowBarSide__Left .SpicyLyricsScrollContainer.HasDuetLines {
+  padding-left: var(--LyricsLeftSidePadding, 42cqw) !important;
+  padding-right: max(var(--LyricsRightSidePadding, 6cqw), 6cqw, 36px) !important;
+}
+
+#SpicyLyricsPage .ContentBox .NowBar.Active.RightSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.NowBarStatus__Open.NowBarSide__Right .SpicyLyricsScrollContainer {
+  padding-right: var(--LyricsLeftSidePadding, 48cqw) !important;
+  padding-left: max(var(--LyricsRightSidePadding, 6cqw), 6cqw, 36px) !important;
+}
+
+#SpicyLyricsPage .ContentBox .NowBar.Active.RightSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines,
+#SpicyLyricsPage.NowBarStatus__Open.NowBarSide__Right .SpicyLyricsScrollContainer.HasDuetLines {
+  padding-right: var(--LyricsLeftSidePadding, 42cqw) !important;
+  padding-left: max(var(--LyricsRightSidePadding, 6cqw), 6cqw, 36px) !important;
+}
+
+#SpicyLyricsPage.NowBarStatus__Closed .SpicyLyricsScrollContainer {
+  padding-left: max(18cqw, 48px) !important;
+  padding-right: max(18cqw, 48px) !important;
+}
+
+#SpicyLyricsPage.NowBarStatus__Closed .SpicyLyricsScrollContainer.HasDuetLines {
+  padding-left: max(12cqw, 36px) !important;
+  padding-right: max(12cqw, 36px) !important;
+}
+
+/* Ensure all lyrics containers, virtual rows, and lines strictly enforce border-box and stay within bounds */
+#SpicyLyricsPage .LyricsContainer,
+#SpicyLyricsPage .LyricsContainer .LyricsContent,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer .VirtualLyricsContainer,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer .VirtualLyricsContainer > div,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+/* Guarantee OppositeAligned lyrics never overflow or clip at the window edge on any resolution */
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.OppositeAligned {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  padding-left: var(--DuetLineInset, 5cqw) !important;
+  padding-right: max(3cqw, 24px) !important;
+  justify-content: flex-end !important;
+  text-align: end !important;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.OppositeAligned.rtl {
+  padding-right: var(--DuetLineInset, 5cqw) !important;
+  padding-left: max(3cqw, 24px) !important;
+}
+
+/* Hide in-lyrics provider tag (kiosk has persistent bottom footer) */
+.LyricsProvider {
+  display: none !important;
+}
+
+/* --- Playback Controls: Shuffle & Repeat Active Indicators --- */
+.PlaybackControl.ShuffleToggle,
+.PlaybackControl.LoopToggle {
+  position: relative;
+  opacity: 0.55;
+  transition: opacity 0.2s ease, fill 0.2s ease, color 0.2s ease;
+}
+
+.PlaybackControl.ShuffleToggle:hover,
+.PlaybackControl.LoopToggle:hover {
+  opacity: 0.85;
+}
+
+.PlaybackControls .PlaybackControl.ShuffleToggle.Enabled,
+.PlaybackControls .PlaybackControl.LoopToggle.Enabled,
+.PlaybackControl.ShuffleToggle.Enabled,
+.PlaybackControl.LoopToggle.Enabled {
+  opacity: 1 !important;
+  color: #1ed760 !important;
+  fill: #1ed760 !important;
+}
+
+.PlaybackControls .PlaybackControl.ShuffleToggle.Enabled svg,
+.PlaybackControls .PlaybackControl.LoopToggle.Enabled svg,
+.PlaybackControl.ShuffleToggle.Enabled svg,
+.PlaybackControl.LoopToggle.Enabled svg {
+  fill: #1ed760 !important;
+  filter: drop-shadow(0 0 6px rgba(30, 215, 96, 0.6)) !important;
+}
+
+/* Distinct active indicator dot underneath enabled buttons */
+.PlaybackControls .PlaybackControl.ShuffleToggle.Enabled::after,
+.PlaybackControls .PlaybackControl.LoopToggle.Enabled::after,
+.PlaybackControl.ShuffleToggle.Enabled::after,
+.PlaybackControl.LoopToggle.Enabled::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background-color: #1ed760;
+  border-radius: 50%;
+  box-shadow: 0 0 5px #1ed760;
+}
+

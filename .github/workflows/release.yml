@@ -1,0 +1,231 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-tests:
+    name: Pre-release Quality Gate (Tests & Lints)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies & test
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check code formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run unit tests
+        run: cargo test --workspace
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  build-dist:
+    name: Build & Package (${{ matrix.target }})
+    needs: preflight-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-musleabihf
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend web assets
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        uses: taiki-e/install-action@cross
+
+      - name: Cross-compile static musl binary & package archive
+        run: cargo xtask dist --target ${{ matrix.target }} --no-frontend-build
+
+      - name: Upload target archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Atomic Release Publication & Attestation
+    needs: build-dist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all release target artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate unified SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          sha256sum syllacast-*.tar.gz | sort -k 2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Generate rate-limit-free release-manifest.json
+        working-directory: dist
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          python3 -c "
+          import json, os, glob
+
+          ref_name = os.environ.get('REF_NAME', 'v1.0.0')
+          version = ref_name.lstrip('v')
+          commit_msg = (os.environ.get('COMMIT_MSG') or '').lower()
+          is_critical = '[security]' in commit_msg or 'critical' in commit_msg or 'security' in ref_name.lower()
+
+          sums = {}
+          if os.path.exists('SHA256SUMS.txt'):
+              with open('SHA256SUMS.txt') as f:
+                  for line in f:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          sums[parts[1]] = parts[0]
+
+          manifest = {
+              'version': version,
+              'tag_name': ref_name,
+              'published_at': '${{ github.event.head_commit.timestamp }}',
+              'is_critical_security_update': is_critical,
+              'html_url': f'https://github.com/TechGigant/syllacast/releases/tag/{ref_name}',
+              'release_notes_url': f'https://github.com/TechGigant/syllacast/releases/tag/{ref_name}',
+              'targets': {}
+          }
+
+          archs = [
+              'x86_64-unknown-linux-musl',
+              'aarch64-unknown-linux-musl',
+              'armv7-unknown-linux-musleabihf'
+          ]
+
+          for arch in archs:
+              pattern = f'syllacast-*{arch}.tar.gz'
+              matches = glob.glob(pattern)
+              if matches:
+                  archive_name = matches[0]
+                  manifest['targets'][arch] = {
+                      'archive_name': archive_name,
+                      'download_url': f'https://github.com/TechGigant/syllacast/releases/download/{ref_name}/{archive_name}',
+                      'sha256': sums.get(archive_name, ''),
+                      'size': os.path.getsize(archive_name)
+                  }
+
+          with open('release-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+
+          print('Generated release-manifest.json:')
+          print(json.dumps(manifest, indent=2))
+          "
+
+      - name: Attest build provenance and artifact integrity
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/syllacast-*.tar.gz
+            dist/SHA256SUMS.txt
+            dist/release-manifest.json
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/syllacast-*.tar.gz
+            dist/SHA256SUMS.txt
+            dist/release-manifest.json
+          generate_release_notes: true
+
+          body: |
+            ## Syllacast Multi-Architecture Release
+
+            Standalone, network-synchronized Spotify lyrics kiosk service compiled as self-contained static binaries with zero `glibc` runtime dependencies.
+
+            ### Architecture Compatibility
+
+            | Target Archive | Supported Devices & Environments |
+            | :--- | :--- |
+            | `syllacast-*-x86_64-unknown-linux-musl.tar.gz` | Standard 64-bit x86 PCs, servers, Intel NUC, x86 appliances (Debian, Ubuntu, Alpine, Arch) |
+            | `syllacast-*-aarch64-unknown-linux-musl.tar.gz` | 64-bit ARM appliances, Raspberry Pi 3/4/5 (64-bit OS), Libre Computer, Odroid |
+            | `syllacast-*-armv7-unknown-linux-musleabihf.tar.gz` | 32-bit ARM with hard-float, Raspberry Pi 2/3/4 (32-bit Raspberry Pi OS / Raspbian) |
+
+            Each archive includes the single stripped static executable (`syllacast`), `LICENSE` (AGPL-3.0), `README.md`, and `ATTRIBUTION.md`.
+
+            ---
+
+            ### Integrity & Verification
+
+            Verify archive checksums:
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            Verify GitHub artifact attestation (signed build provenance):
+            ```bash
+            gh attestation verify syllacast-<version>-<target>.tar.gz --owner TechGigant
+            ```
+
+            ---
+
+            ### AGPL-3.0 Corresponding Source Code Notice
+
+            In accordance with **Section 13 of the GNU Affero General Public License v3.0**, the complete matching corresponding source code (including backend, frontend sources, and build scripts) for this release is available at:
+            - **Source Code Archive**: [syllacast-${{ github.ref_name }}.tar.gz](https://github.com/TechGigant/syllacast/archive/refs/tags/${{ github.ref_name }}.tar.gz)
+            - **Repository**: [https://github.com/TechGigant/syllacast](https://github.com/TechGigant/syllacast)
