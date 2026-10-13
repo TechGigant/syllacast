@@ -27,6 +27,7 @@ pub struct QueueItemDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LyricsStatus {
+    Idle,
     Loading,
     Found,
     NotFound,
@@ -34,7 +35,7 @@ pub enum LyricsStatus {
 }
 
 fn default_lyrics_status() -> LyricsStatus {
-    LyricsStatus::NotFound
+    LyricsStatus::Idle
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

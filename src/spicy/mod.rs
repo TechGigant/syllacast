@@ -32,6 +32,14 @@ impl std::fmt::Debug for SpicyClient {
     }
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum LyricsFetchResult {
+    Found(Box<LyricsEnvelope>),
+    NotFound,
+    Error(String),
+}
+
 impl SpicyClient {
     pub fn new(api_url: String, secret_key: Option<String>, cache: Arc<LyricsCache>) -> Self {
         let http = Client::builder()
@@ -56,19 +64,19 @@ impl SpicyClient {
         self.cache.get(track_id)
     }
 
-    pub async fn get_lyrics(&self, track_id: &str) -> Option<LyricsEnvelope> {
+    pub async fn fetch_lyrics(&self, track_id: &str) -> LyricsFetchResult {
         // 1. Check Cache first
         match self.cache.lookup(track_id) {
             cache::CacheLookup::Hit(cached) => {
                 info!("Serving lyrics for {} from cache", track_id);
-                return Some(*cached);
+                return LyricsFetchResult::Found(cached);
             }
             cache::CacheLookup::NegativeHit => {
                 info!(
                     "Serving negative cache (no lyrics upstream) for {}",
                     track_id
                 );
-                return None;
+                return LyricsFetchResult::NotFound;
             }
             cache::CacheLookup::Miss => {}
         }
@@ -77,7 +85,7 @@ impl SpicyClient {
             Some(k) if !k.trim().is_empty() => k.trim(),
             _ => {
                 warn!("No SPICY_LYRICS_SECRET_KEY configured; cannot fetch remote lyrics");
-                return None;
+                return LyricsFetchResult::Error("No API key configured".to_string());
             }
         };
 
@@ -94,7 +102,7 @@ impl SpicyClient {
             Ok(r) => r,
             Err(e) => {
                 error!("HTTP request error fetching lyrics for {}: {}", track_id, e);
-                return None;
+                return LyricsFetchResult::Error(e.to_string());
             }
         };
 
@@ -103,14 +111,14 @@ impl SpicyClient {
                 Ok(envelope) => {
                     info!("Successfully retrieved lyrics for {}", track_id);
                     self.cache.store(track_id, &envelope);
-                    Some(envelope)
+                    LyricsFetchResult::Found(Box::new(envelope))
                 }
                 Err(e) => {
                     error!(
                         "JSON deserialization error for lyrics of {}: {}",
                         track_id, e
                     );
-                    None
+                    LyricsFetchResult::Error(e.to_string())
                 }
             }
         } else if resp.status() == StatusCode::NOT_FOUND {
@@ -119,12 +127,20 @@ impl SpicyClient {
                 track_id
             );
             self.cache.store_not_found(track_id);
-            None
+            LyricsFetchResult::NotFound
         } else {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             warn!("Spicy Lyrics API error {}: {}", status, body);
-            None
+            LyricsFetchResult::Error(format!("API returned {}: {}", status, body))
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_lyrics(&self, track_id: &str) -> Option<LyricsEnvelope> {
+        match self.fetch_lyrics(track_id).await {
+            LyricsFetchResult::Found(envelope) => Some(*envelope),
+            _ => None,
         }
     }
 }

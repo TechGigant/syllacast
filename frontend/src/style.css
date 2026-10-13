@@ -191,3 +191,46 @@ html, body {
   box-shadow: 0 0 5px #1ed760;
 }
 
+/* Authentic Spicy Lyrics Notice (lyrics-not-found, errors, service messages) */
+#SpicyLyricsPage .ContentBox .LyricsContainer .LyricsContent .LyricsNotice,
+.LyricsNotice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--color-text-primary, hsla(0, 0%, 100%, 0.92));
+  transform: translate(-50%, -50%);
+  font-weight: var(--w-semibold, 600);
+  letter-spacing: -0.01em;
+  transition: padding-right 0.4s, padding-left 0.4s;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#SpicyLyricsPage .ContentBox .LyricsContainer .LyricsContent .LyricsNotice .notice-descriptor,
+.LyricsNotice .notice-descriptor {
+  font-size: clamp(1.25rem, 3.5cqw, 2.5rem);
+  font-weight: var(--w-semibold, 600);
+  color: var(--color-text-primary, hsla(0, 0%, 100%, 0.92));
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+  margin: 0;
+  line-height: 1.35;
+}
+
+#SpicyLyricsPage .ContentBox .LyricsContainer .LyricsContent .LyricsNotice .notice-footer,
+.LyricsNotice .notice-footer {
+  font-size: clamp(0.95rem, 2.5cqw, 1.45rem);
+  margin-top: 1cqh;
+  font-weight: var(--w-regular, 400);
+  color: var(--color-text-secondary, hsla(0, 0%, 100%, 0.6));
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+
+

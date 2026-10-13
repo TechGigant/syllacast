@@ -24,7 +24,7 @@ use config::Config;
 use soloist::models::{PositionAnchor, SoloistCommand, SoloistEntity, SoloistServerEvent};
 use soloist::run_soloist_client;
 use spicy::cache::{CacheLookup, LyricsCache};
-use spicy::SpicyClient;
+use spicy::{LyricsFetchResult, SpicyClient};
 use sync::protocol::{AppStateSnapshot, LyricsStatus, QueueItemDto, ServerMessage, TrackMetadata};
 
 #[derive(Parser)]
@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         position: None,
         queue_upcoming: Vec::new(),
         lyrics: None,
-        lyrics_status: LyricsStatus::NotFound,
+        lyrics_status: LyricsStatus::Idle,
         volume: None,
         shuffle: None,
         repeat: None,
@@ -277,15 +277,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let client_tx_inner = client_tx_ref.clone();
 
                                     tokio::spawn(async move {
-                                        let lyrics = spicy.get_lyrics(&id).await;
+                                        let res = spicy.fetch_lyrics(&id).await;
                                         let mut s = state_inner.current_state.write().await;
                                         if s.track.as_ref().map(|t| &t.id) == Some(&id) {
-                                            if let Some(l) = lyrics {
-                                                s.lyrics = Some(l);
-                                                s.lyrics_status = LyricsStatus::Found;
-                                            } else {
-                                                s.lyrics = None;
-                                                s.lyrics_status = LyricsStatus::NotFound;
+                                            match res {
+                                                LyricsFetchResult::Found(l) => {
+                                                    s.lyrics = Some(*l);
+                                                    s.lyrics_status = LyricsStatus::Found;
+                                                }
+                                                LyricsFetchResult::NotFound => {
+                                                    s.lyrics = None;
+                                                    s.lyrics_status = LyricsStatus::NotFound;
+                                                }
+                                                LyricsFetchResult::Error(_) => {
+                                                    s.lyrics = None;
+                                                    s.lyrics_status = LyricsStatus::Error;
+                                                }
                                             }
                                             let snapshot = s.clone();
                                             let _ = client_tx_inner
@@ -295,7 +302,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else {
-                            current.lyrics_status = LyricsStatus::NotFound;
+                            current.lyrics = None;
+                            current.lyrics_status = LyricsStatus::Idle;
                         }
                     } else if let Some(new_meta) = track {
                         // If same track, enrich metadata if previously missing duration or cover
@@ -354,15 +362,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let client_tx_inner = client_tx_ref.clone();
 
                                     tokio::spawn(async move {
-                                        let lyrics = spicy.get_lyrics(&id).await;
+                                        let res = spicy.fetch_lyrics(&id).await;
                                         let mut s = state_inner.current_state.write().await;
                                         if s.track.as_ref().map(|t| &t.id) == Some(&id) {
-                                            if let Some(l) = lyrics {
-                                                s.lyrics = Some(l);
-                                                s.lyrics_status = LyricsStatus::Found;
-                                            } else {
-                                                s.lyrics = None;
-                                                s.lyrics_status = LyricsStatus::NotFound;
+                                            match res {
+                                                LyricsFetchResult::Found(l) => {
+                                                    s.lyrics = Some(*l);
+                                                    s.lyrics_status = LyricsStatus::Found;
+                                                }
+                                                LyricsFetchResult::NotFound => {
+                                                    s.lyrics = None;
+                                                    s.lyrics_status = LyricsStatus::NotFound;
+                                                }
+                                                LyricsFetchResult::Error(_) => {
+                                                    s.lyrics = None;
+                                                    s.lyrics_status = LyricsStatus::Error;
+                                                }
                                             }
                                             let snapshot = s.clone();
                                             let _ = client_tx_inner
@@ -372,7 +387,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else {
-                            current.lyrics_status = LyricsStatus::NotFound;
+                            current.lyrics = None;
+                            current.lyrics_status = LyricsStatus::Idle;
                         }
 
                         let snapshot = current.clone();

@@ -477,3 +477,34 @@ fn test_empty_env_var_sanitization() {
     assert!(std::env::var("SOLOIST_DATA_DIR").is_err());
     assert!(std::env::var("SOLOIST_WS_URL").is_err());
 }
+
+#[test]
+fn test_lyrics_status_serialization() {
+    use crate::sync::protocol::LyricsStatus;
+
+    assert_eq!(
+        serde_json::to_string(&LyricsStatus::Idle).unwrap(),
+        "\"idle\""
+    );
+    assert_eq!(
+        serde_json::to_string(&LyricsStatus::Loading).unwrap(),
+        "\"loading\""
+    );
+    assert_eq!(
+        serde_json::to_string(&LyricsStatus::Found).unwrap(),
+        "\"found\""
+    );
+    assert_eq!(
+        serde_json::to_string(&LyricsStatus::NotFound).unwrap(),
+        "\"not_found\""
+    );
+    assert_eq!(
+        serde_json::to_string(&LyricsStatus::Error).unwrap(),
+        "\"error\""
+    );
+
+    let idle: LyricsStatus = serde_json::from_str("\"idle\"").unwrap();
+    assert_eq!(idle, LyricsStatus::Idle);
+    let err: LyricsStatus = serde_json::from_str("\"error\"").unwrap();
+    assert_eq!(err, LyricsStatus::Error);
+}

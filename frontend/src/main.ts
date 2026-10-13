@@ -307,16 +307,20 @@ function handleStateUpdate(state: AppStateSnapshot) {
   kioskUpNext.update(state.queue_upcoming);
 
   // 4. Lyrics State Machine
-  const lyricsStatus = state.lyrics_status || (state.lyrics ? "found" : "not_found");
+  const lyricsStatus = state.lyrics_status || (state.lyrics ? "found" : (currentUri ? "not_found" : "idle"));
   const lyricsKey = `${currentUri}:${lyricsStatus}:${state.lyrics?.Body?.id || ""}`;
 
   if (lyricsKey !== lastLyricsKey) {
     lastLyricsKey = lyricsKey;
 
-    if (!currentUri) {
-      // Idle / no song playing
+    if (!currentUri || lyricsStatus === "idle") {
+      // Idle / no song playing: clean up lyrics containers and loaders without showing error notice
       setLyricsPayload(null, null);
-      void ApplyLyrics(["unknown-track", 404, ""]);
+      HideLoaderContainer();
+      DestroyAllLyricsContainers();
+      ClearLyricsContentArrays();
+      ClearScrollSimplebar();
+      ClearLyricsPageContainer();
       kioskFooter.updateLyricsSource(undefined);
     } else if (lyricsStatus === "loading") {
       // Server is currently fetching lyrics
@@ -342,6 +346,11 @@ function handleStateUpdate(state: AppStateSnapshot) {
       // 404 - no lyrics available for this song
       setLyricsPayload(null, currentUri);
       void ApplyLyrics(["lyrics-not-found", 404, currentUri]);
+      kioskFooter.updateLyricsSource(undefined);
+    } else if (lyricsStatus === "error") {
+      // Server error or network issue
+      setLyricsPayload(null, currentUri);
+      void ApplyLyrics(["unknown-error", 500, currentUri]);
       kioskFooter.updateLyricsSource(undefined);
     }
   }

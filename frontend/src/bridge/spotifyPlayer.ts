@@ -41,7 +41,7 @@ export interface AppStateSnapshot {
   position?: PositionAnchor;
   queue_upcoming: QueueItemDto[];
   lyrics?: any;
-  lyrics_status?: "loading" | "found" | "not_found" | "error" | string;
+  lyrics_status?: "idle" | "loading" | "found" | "not_found" | "error" | string;
   volume?: number;
   shuffle?: boolean;
   repeat?: string;
