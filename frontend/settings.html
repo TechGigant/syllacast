@@ -588,6 +588,94 @@
       const notesBox = document.getElementById("update-notes-box");
       const notesContent = document.getElementById("update-notes-content");
 
+      let updatePollInterval = null;
+      let targetUpdateVersion = null;
+      let isWaitingForRestart = false;
+
+      function startUpdatePolling(targetVersion) {
+        if (targetVersion) targetUpdateVersion = targetVersion;
+        if (updatePollInterval) return;
+
+        btnApplyUpdate.disabled = true;
+        btnCheckUpdates.disabled = true;
+
+        updatePollInterval = setInterval(async () => {
+          try {
+            const res = await fetch("/api/updates/status", { cache: "no-store" });
+            if (!res.ok) throw new Error("HTTP error " + res.status);
+            const data = await res.json();
+
+            // Check if server finished restarting and is now running the target version or is up to date
+            if (isWaitingForRestart) {
+              if (
+                data.status === "up_to_date" ||
+                data.status === "idle" ||
+                (targetUpdateVersion && data.current_version === targetUpdateVersion)
+              ) {
+                clearInterval(updatePollInterval);
+                updatePollInterval = null;
+                isWaitingForRestart = false;
+                updateBadge.textContent = "Updated Successfully!";
+                updateBadge.style.color = "#2ecc71";
+                updateBadge.style.background = "rgba(46, 204, 113, 0.2)";
+                updateBadge.style.borderColor = "rgba(46, 204, 113, 0.4)";
+                updateMsg.textContent = `Syllacast updated to v${data.current_version}. Refreshing...`;
+                currentVerEl.textContent = `v${data.current_version}`;
+                btnApplyUpdate.style.display = "none";
+                notesBox.style.display = "none";
+                setTimeout(() => window.location.reload(), 1500);
+                return;
+              }
+            }
+
+            if (data.status === "downloading" || data.status === "verifying" || data.status === "installing") {
+              const pct = data.progress_percent || 0;
+              updateBadge.textContent = `Updating (${pct}%)...`;
+              updateBadge.style.background = "rgba(52, 152, 219, 0.2)";
+              updateBadge.style.color = "#3498db";
+              updateBadge.style.borderColor = "#3498db";
+              btnApplyUpdate.textContent = `Updating (${pct}%)...`;
+              updateMsg.textContent =
+                data.status === "downloading"
+                  ? `Downloading release archive (${pct}%)...`
+                  : data.status === "verifying"
+                  ? "Verifying SHA256 checksum..."
+                  : `Installing release files (${pct}%)...`;
+            } else if (data.status === "restarting") {
+              isWaitingForRestart = true;
+              updateBadge.textContent = "Restarting Service...";
+              updateBadge.style.color = "#2ecc71";
+              btnApplyUpdate.textContent = "Restarting...";
+              updateMsg.textContent = "Binary applied! Waiting for Syllacast service to restart...";
+            } else if (data.status === "error") {
+              clearInterval(updatePollInterval);
+              updatePollInterval = null;
+              isWaitingForRestart = false;
+              updateBadge.textContent = "Update Failed";
+              updateBadge.style.color = "#e74c3c";
+              updateMsg.textContent = "Update failed: " + (data.error_message || "Unknown error");
+              btnApplyUpdate.disabled = false;
+              btnApplyUpdate.textContent = "Retry Update";
+              btnCheckUpdates.disabled = false;
+            } else if (data.status === "up_to_date" && targetUpdateVersion && data.current_version === targetUpdateVersion) {
+              clearInterval(updatePollInterval);
+              updatePollInterval = null;
+              isWaitingForRestart = false;
+              updateBadge.textContent = "Updated Successfully!";
+              updateMsg.textContent = `Now running v${data.current_version}. Refreshing...`;
+              setTimeout(() => window.location.reload(), 1500);
+            }
+          } catch (e) {
+            // Expected during systemd service restart window (connection refused)
+            isWaitingForRestart = true;
+            updateBadge.textContent = "Restarting Service...";
+            updateBadge.style.color = "#2ecc71";
+            btnApplyUpdate.textContent = "Service Rebooting...";
+            updateMsg.textContent = "Service is restarting with the new version, reconnecting...";
+          }
+        }, 1200);
+      }
+
       async function fetchUpdateStatus() {
         try {
           const res = await fetch("/api/updates/status");
@@ -604,30 +692,22 @@
 
         if (data.status === "available" && data.update_available) {
           const u = data.update_available;
+          targetUpdateVersion = u.latest_version;
           updateBadge.textContent = `v${u.latest_version} Available!`;
           updateBadge.style.background = u.is_critical_security_update ? "rgba(255, 51, 102, 0.25)" : "rgba(243, 156, 18, 0.2)";
           updateBadge.style.color = u.is_critical_security_update ? "#ff3366" : "#f39c12";
           updateBadge.style.borderColor = u.is_critical_security_update ? "#ff3366" : "#f39c12";
 
           btnApplyUpdate.style.display = "inline-flex";
+          btnApplyUpdate.disabled = false;
           btnApplyUpdate.textContent = u.is_critical_security_update ? "🛡️ Install Security Update Now" : "🚀 Install Update Now";
 
           if (u.release_notes) {
             notesBox.style.display = "block";
             notesContent.textContent = u.release_notes;
           }
-        } else if (data.status === "downloading" || data.status === "verifying" || data.status === "installing") {
-          updateBadge.textContent = "Updating...";
-          updateBadge.style.background = "rgba(52, 152, 219, 0.2)";
-          updateBadge.style.color = "#3498db";
-          updateBadge.style.borderColor = "#3498db";
-          btnApplyUpdate.disabled = true;
-          btnApplyUpdate.textContent = `Updating (${data.progress_percent || 0}%)...`;
-        } else if (data.status === "restarting") {
-          updateBadge.textContent = "Restarting...";
-          updateBadge.style.color = "#2ecc71";
-          btnApplyUpdate.textContent = "Restarting Service...";
-          setTimeout(() => window.location.reload(), 4000);
+        } else if (data.status === "downloading" || data.status === "verifying" || data.status === "installing" || data.status === "restarting") {
+          startUpdatePolling(data.latest_version);
         } else {
           updateBadge.textContent = "Up to Date";
           updateBadge.style.background = "rgba(46, 204, 113, 0.15)";
@@ -657,14 +737,22 @@
 
       btnApplyUpdate?.addEventListener("click", async () => {
         btnApplyUpdate.disabled = true;
+        btnCheckUpdates.disabled = true;
         btnApplyUpdate.textContent = "Starting Update...";
         updateMsg.textContent = "Downloading and applying release...";
+        updateBadge.textContent = "Updating...";
+        updateBadge.style.background = "rgba(52, 152, 219, 0.2)";
+        updateBadge.style.color = "#3498db";
+        updateBadge.style.borderColor = "#3498db";
         try {
-          await fetch("/api/updates/apply", { method: "POST" });
-          updateBadge.textContent = "Updating...";
+          const res = await fetch("/api/updates/apply", { method: "POST" });
+          if (!res.ok) throw new Error("HTTP error " + res.status);
+          startUpdatePolling(targetUpdateVersion);
         } catch (e) {
           updateMsg.textContent = "Apply failed: " + String(e);
           btnApplyUpdate.disabled = false;
+          btnCheckUpdates.disabled = false;
+          btnApplyUpdate.textContent = "🚀 Install Update Now";
         }
       });
 

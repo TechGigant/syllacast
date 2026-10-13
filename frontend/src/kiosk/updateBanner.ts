@@ -31,11 +31,11 @@ export function createKioskUpdateBanner(): KioskUpdateBanner {
   container.className = "kiosk-update-banner";
   container.style.cssText = `
     position: fixed;
-    top: 20px;
-    right: 24px;
+    top: 72px;
+    right: 28px;
     z-index: 99999;
     max-width: 440px;
-    width: calc(100vw - 48px);
+    width: min(440px, calc(100vw - 56px));
     border-radius: 14px;
     padding: 14px 18px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
@@ -222,6 +222,7 @@ export function createKioskUpdateBanner(): KioskUpdateBanner {
 
   function show(info: UpdateNotification) {
     if (isUpdating) return;
+    if (!info || !info.latest_version) return;
     currentInfo = info;
     if (info.is_critical_security_update) {
       renderCritical(info);

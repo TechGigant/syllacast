@@ -95,7 +95,7 @@ impl UpdateService {
                         .map(|s| s > now_ms)
                         .unwrap_or(false);
 
-                if !is_snoozed {
+                if !is_snoozed && (current_settings.update_mode != "disabled" || is_critical) {
                     if let Some(sender) = tx {
                         let _ = sender.send(ServerMessage::UpdateAvailable(dto));
                     }

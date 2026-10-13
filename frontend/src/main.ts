@@ -89,7 +89,7 @@ appRoot.appendChild(kioskFooter.element);
 
 // Mount on-screen update toast & critical alert banner
 const kioskUpdateBanner = createKioskUpdateBanner();
-appRoot.appendChild(kioskUpdateBanner.element);
+document.body.appendChild(kioskUpdateBanner.element);
 
 // Start authentic Spicy Lyrics auto-scrolling manager
 new IntervalManager(ScrollingIntervalTime, () => {
@@ -225,7 +225,10 @@ function connectWebSocket() {
         const state: AppStateSnapshot = msg.track ? msg : msg.data ?? msg;
         handleStateUpdate(state);
       } else if (msg.type === "update_available") {
-        kioskUpdateBanner.show(msg.data ?? msg);
+        const updateInfo = msg.data ?? msg;
+        if (updateInfo && updateInfo.latest_version) {
+          kioskUpdateBanner.show(updateInfo);
+        }
       } else if (msg.type === "update_progress") {
         kioskUpdateBanner.showProgress(msg);
       }

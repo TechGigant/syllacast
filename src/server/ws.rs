@@ -49,6 +49,51 @@ async fn handle_socket(socket: WebSocket, state: Arc<SharedState>) {
         }
     }
 
+    // Send current update status or in-progress notification immediately on connection
+    {
+        let update_status = state.updater.get_status().await;
+        match update_status.status {
+            crate::updater::models::UpdatePhase::Downloading
+            | crate::updater::models::UpdatePhase::Verifying
+            | crate::updater::models::UpdatePhase::Installing
+            | crate::updater::models::UpdatePhase::Restarting => {
+                let stage_name = match update_status.status {
+                    crate::updater::models::UpdatePhase::Downloading => "downloading",
+                    crate::updater::models::UpdatePhase::Verifying => "verifying",
+                    crate::updater::models::UpdatePhase::Installing => "installing",
+                    crate::updater::models::UpdatePhase::Restarting => "restarting",
+                    _ => "downloading",
+                };
+                let progress_msg = ServerMessage::UpdateProgress {
+                    stage: stage_name.to_string(),
+                    percent: update_status.progress_percent.unwrap_or(0),
+                    message: "Updating Syllacast...".to_string(),
+                };
+                if let Ok(text) = serde_json::to_string(&progress_msg) {
+                    let _ = sender.send(Message::Text(text.into())).await;
+                }
+            }
+            crate::updater::models::UpdatePhase::Available => {
+                if let Some(dto) = update_status.update_available {
+                    let now_ms = Utc::now().timestamp_millis();
+                    let settings = state.settings.read().await;
+                    let is_snoozed = !dto.is_critical_security_update
+                        && settings
+                            .snoozed_update_until
+                            .map(|s| s > now_ms)
+                            .unwrap_or(false);
+                    if !is_snoozed && (settings.update_mode != "disabled" || dto.is_critical_security_update) {
+                        let update_msg = ServerMessage::UpdateAvailable(dto);
+                        if let Ok(text) = serde_json::to_string(&update_msg) {
+                            let _ = sender.send(Message::Text(text.into())).await;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     // Task to send messages (both direct replies and broadcasts) down to this client
     let mut send_task = tokio::spawn(async move {
         loop {

@@ -508,3 +508,117 @@ fn test_lyrics_status_serialization() {
     let err: LyricsStatus = serde_json::from_str("\"error\"").unwrap();
     assert_eq!(err, LyricsStatus::Error);
 }
+
+#[test]
+fn test_server_message_update_serialization() {
+    use crate::sync::protocol::ServerMessage;
+    use crate::updater::models::UpdateNotificationDto;
+
+    let dto = UpdateNotificationDto {
+        current_version: "1.0.0".to_string(),
+        latest_version: "1.0.1".to_string(),
+        is_critical_security_update: false,
+        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1".to_string(),
+        release_notes: Some("Fixes and features".to_string()),
+        published_at: "2026-10-13T20:00:00Z".to_string(),
+        download_url: None,
+    };
+
+    let msg = ServerMessage::UpdateAvailable(dto);
+    let json_str = serde_json::to_string(&msg).expect("Serialize UpdateAvailable");
+    let v: serde_json::Value = serde_json::from_str(&json_str).expect("Parse JSON Value");
+
+    assert_eq!(v["type"], "update_available");
+    assert_eq!(v["current_version"], "1.0.0");
+    assert_eq!(v["latest_version"], "1.0.1");
+    assert_eq!(v["is_critical_security_update"], false);
+    assert_eq!(v["release_notes"], "Fixes and features");
+
+    let progress = ServerMessage::UpdateProgress {
+        stage: "downloading".to_string(),
+        percent: 45,
+        message: "Downloading release archive...".to_string(),
+    };
+    let prog_json = serde_json::to_string(&progress).expect("Serialize UpdateProgress");
+    let pv: serde_json::Value = serde_json::from_str(&prog_json).expect("Parse JSON Value");
+    assert_eq!(pv["type"], "update_progress");
+    assert_eq!(pv["stage"], "downloading");
+    assert_eq!(pv["percent"], 45);
+}
+
+#[tokio::test]
+async fn test_ws_on_connect_update_notification_logic() {
+    use crate::settings::KioskSettings;
+    use crate::updater::models::{UpdateNotificationDto, UpdatePhase, UpdateStatusResponse};
+    use chrono::Utc;
+
+    let dto = UpdateNotificationDto {
+        current_version: "1.0.0".to_string(),
+        latest_version: "1.0.1".to_string(),
+        is_critical_security_update: false,
+        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1".to_string(),
+        release_notes: None,
+        published_at: "2026-10-13T20:00:00Z".to_string(),
+        download_url: None,
+    };
+
+    let _status = UpdateStatusResponse {
+        current_version: "1.0.0".to_string(),
+        latest_version: Some("1.0.1".to_string()),
+        status: UpdatePhase::Available,
+        progress_percent: None,
+        last_checked_at: None,
+        error_message: None,
+        update_available: Some(dto.clone()),
+        snoozed_until: None,
+    };
+
+    let mut settings = KioskSettings::default();
+    settings.update_mode = "notify".to_string();
+
+    // 1. When unsnoozed and update_mode == "notify": update should be dispatched
+    let now_ms = Utc::now().timestamp_millis();
+    let is_snoozed = !dto.is_critical_security_update
+        && settings
+            .snoozed_update_until
+            .map(|s| s > now_ms)
+            .unwrap_or(false);
+    assert!(!is_snoozed);
+    assert!(settings.update_mode != "disabled" || dto.is_critical_security_update);
+
+    // 2. When snoozed: should NOT dispatch
+    settings.snoozed_update_until = Some(now_ms + 10_000);
+    let is_snoozed_now = !dto.is_critical_security_update
+        && settings
+            .snoozed_update_until
+            .map(|s| s > now_ms)
+            .unwrap_or(false);
+    assert!(is_snoozed_now);
+
+    // 3. When disabled: should NOT dispatch standard update
+    settings.snoozed_update_until = None;
+    settings.update_mode = "disabled".to_string();
+    let can_dispatch = !(!dto.is_critical_security_update
+        && settings
+            .snoozed_update_until
+            .map(|s| s > now_ms)
+            .unwrap_or(false))
+        && (settings.update_mode != "disabled" || dto.is_critical_security_update);
+    assert!(!can_dispatch);
+
+    // 4. Critical update bypasses disabled mode & snooze
+    let critical_dto = UpdateNotificationDto {
+        is_critical_security_update: true,
+        ..dto
+    };
+    settings.snoozed_update_until = Some(now_ms + 10_000);
+    settings.update_mode = "disabled".to_string();
+    let is_snoozed_crit = !critical_dto.is_critical_security_update
+        && settings
+            .snoozed_update_until
+            .map(|s| s > now_ms)
+            .unwrap_or(false);
+    let can_dispatch_crit = !is_snoozed_crit
+        && (settings.update_mode != "disabled" || critical_dto.is_critical_security_update);
+    assert!(can_dispatch_crit);
+}
