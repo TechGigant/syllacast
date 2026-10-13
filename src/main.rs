@@ -56,6 +56,21 @@ pub enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Sanitize empty environment variables from systemd or shell to avoid clap argument errors
+    for env_var in [
+        "SOLOIST_DATA_DIR",
+        "SOLOIST_WS_URL",
+        "FRONTEND_DIST",
+        "LYRICS_CACHE_DIR",
+        "SYLLACAST_CONFIG_DIR",
+    ] {
+        if let Ok(val) = std::env::var(env_var) {
+            if val.trim().is_empty() {
+                std::env::remove_var(env_var);
+            }
+        }
+    }
+
     let cli = Cli::parse();
 
     if cli.install || matches!(cli.command, Some(Commands::Install | Commands::Setup)) {

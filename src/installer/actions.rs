@@ -99,17 +99,7 @@ pub fn install_or_update(config: &InstallConfig) -> Result<Vec<String>, String> 
     }
 
     // Write /opt/syllacast/.env
-    let env_content = format!(
-        "# Syllacast Environment Configuration\n\
-         SPICY_LYRICS_SECRET_KEY={}\n\
-         SOLOIST_DATA_DIR={}\n\
-         SYLLACAST_PORT={}\n\
-         SYLLACAST_BIND={}\n",
-        config.spicy_key,
-        config.soloist_data_dir.to_string_lossy(),
-        config.port,
-        config.bind
-    );
+    let env_content = format_env_file(config);
     let env_path = opt_dir.join(".env");
     fs::write(&env_path, env_content)
         .map_err(|e| format!("Failed to write configuration file {:?}: {}", env_path, e))?;
@@ -187,21 +177,37 @@ pub fn install_or_update(config: &InstallConfig) -> Result<Vec<String>, String> 
     Ok(log)
 }
 
+fn format_env_file(config: &InstallConfig) -> String {
+    let soloist_line = if !config.soloist_data_dir.as_os_str().is_empty() {
+        format!(
+            "SOLOIST_DATA_DIR={}\n",
+            config.soloist_data_dir.to_string_lossy()
+        )
+    } else {
+        "# SOLOIST_DATA_DIR=\n".to_string()
+    };
+
+    let spicy_line = if !config.spicy_key.is_empty() {
+        format!("SPICY_LYRICS_SECRET_KEY={}\n", config.spicy_key)
+    } else {
+        "# SPICY_LYRICS_SECRET_KEY=\n".to_string()
+    };
+
+    format!(
+        "# Syllacast Environment Configuration\n\
+         {}\
+         {}\
+         SYLLACAST_PORT={}\n\
+         SYLLACAST_BIND={}\n",
+        spicy_line, soloist_line, config.port, config.bind
+    )
+}
+
 /// Reconfigures settings in `/opt/syllacast/.env` and restarts the service.
 pub fn reconfigure(config: &InstallConfig) -> Result<Vec<String>, String> {
     let mut log = Vec::new();
     let env_path = Path::new("/opt/syllacast/.env");
-    let env_content = format!(
-        "# Syllacast Environment Configuration\n\
-         SPICY_LYRICS_SECRET_KEY={}\n\
-         SOLOIST_DATA_DIR={}\n\
-         SYLLACAST_PORT={}\n\
-         SYLLACAST_BIND={}\n",
-        config.spicy_key,
-        config.soloist_data_dir.to_string_lossy(),
-        config.port,
-        config.bind
-    );
+    let env_content = format_env_file(config);
     fs::write(env_path, env_content)
         .map_err(|e| format!("Failed to write configuration file {:?}: {}", env_path, e))?;
 

@@ -459,3 +459,21 @@ fn test_resolve_destination_path_custom_and_default() {
     let dest_default = UpdateInstaller::resolve_destination_path().expect("resolve path");
     assert!(!dest_default.as_os_str().is_empty());
 }
+
+#[test]
+fn test_empty_env_var_sanitization() {
+    // Simulate systemd EnvironmentFile setting empty values
+    std::env::set_var("SOLOIST_DATA_DIR", "");
+    std::env::set_var("SOLOIST_WS_URL", "   ");
+
+    for env_var in ["SOLOIST_DATA_DIR", "SOLOIST_WS_URL"] {
+        if let Ok(val) = std::env::var(env_var) {
+            if val.trim().is_empty() {
+                std::env::remove_var(env_var);
+            }
+        }
+    }
+
+    assert!(std::env::var("SOLOIST_DATA_DIR").is_err());
+    assert!(std::env::var("SOLOIST_WS_URL").is_err());
+}

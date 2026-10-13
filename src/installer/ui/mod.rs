@@ -119,6 +119,10 @@ impl AppState {
             if let Some(ref d) = self.detected_procs[self.soloist_select_index].data_dir {
                 return d.clone();
             }
+            // If the selected process didn't yield an explicit data dir, prefer the first detected directory
+            if let Some(first_dir) = self.detected_dirs.first().and_then(|d| d.data_dir.as_ref()) {
+                return first_dir.clone();
+            }
         } else if self.soloist_select_index < total_procs + total_dirs {
             let idx = self.soloist_select_index - total_procs;
             if let Some(ref d) = self.detected_dirs[idx].data_dir {
@@ -128,6 +132,18 @@ impl AppState {
 
         if !self.custom_data_dir.trim().is_empty() {
             PathBuf::from(self.custom_data_dir.trim())
+        } else if let Some(first_dir) = self.detected_dirs.first().and_then(|d| d.data_dir.as_ref())
+        {
+            first_dir.clone()
+        } else if let Some(home) = dirs::home_dir() {
+            let candidate = home.join(".local/share/soloist");
+            if candidate.exists() {
+                candidate
+            } else if PathBuf::from("/var/lib/soloist-appliance/soloist-data").exists() {
+                PathBuf::from("/var/lib/soloist-appliance/soloist-data")
+            } else {
+                candidate
+            }
         } else {
             PathBuf::from("/var/lib/soloist-data")
         }
@@ -418,9 +434,16 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
             KeyCode::Enter => {
                 let port: u16 = state.port.trim().parse().unwrap_or(8080);
                 let (user, group) = state.selected_service_user();
+                let data_dir = if !state.custom_data_dir.trim().is_empty() {
+                    PathBuf::from(state.custom_data_dir.trim())
+                } else if let Some(ref existing) = state.existing.existing_data_dir {
+                    existing.clone()
+                } else {
+                    state.selected_data_dir()
+                };
                 let config = InstallConfig {
                     spicy_key: state.spicy_key.trim().to_string(),
-                    soloist_data_dir: PathBuf::from(state.custom_data_dir.trim()),
+                    soloist_data_dir: data_dir,
                     port,
                     bind: "0.0.0.0".to_string(),
                     service_user: user,

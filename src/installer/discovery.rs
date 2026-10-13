@@ -130,6 +130,62 @@ pub fn scan_running_processes() -> Vec<DiscoveredSoloist> {
                         i += 1;
                     }
 
+                    // If --data-dir was not an explicit command line argument,
+                    // resolve the process owner's default Soloist data directory (~/.local/share/soloist)
+                    if data_dir.is_none() {
+                        let environ_path = pid_path.join("environ");
+                        if let Ok(env_bytes) = std::fs::read(&environ_path) {
+                            for env_entry in env_bytes.split(|&b| b == 0) {
+                                let s = String::from_utf8_lossy(env_entry);
+                                if let Some(home) = s.strip_prefix("HOME=") {
+                                    let candidate =
+                                        PathBuf::from(home).join(".local/share/soloist");
+                                    if candidate.exists() {
+                                        data_dir = Some(candidate);
+                                        break;
+                                    }
+                                } else if let Some(xdg) = s.strip_prefix("XDG_DATA_HOME=") {
+                                    let candidate = PathBuf::from(xdg).join("soloist");
+                                    if candidate.exists() {
+                                        data_dir = Some(candidate);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    #[cfg(unix)]
+                    if data_dir.is_none() {
+                        use std::os::unix::fs::MetadataExt;
+                        if let Ok(meta) = std::fs::metadata(&pid_path) {
+                            let uid = meta.uid();
+                            if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
+                                for line in passwd.lines() {
+                                    let parts: Vec<&str> = line.split(':').collect();
+                                    if parts.len() >= 6 && parts[2] == uid.to_string() {
+                                        let home_dir = parts[5];
+                                        let candidate =
+                                            PathBuf::from(home_dir).join(".local/share/soloist");
+                                        if candidate.exists() {
+                                            data_dir = Some(candidate);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if data_dir.is_none() {
+                        let cwd_path = pid_path.join("cwd");
+                        if cwd_path.join("ws.port").exists() || cwd_path.join("ws.addr").exists() {
+                            if let Ok(target) = std::fs::read_link(&cwd_path) {
+                                data_dir = Some(target);
+                            }
+                        }
+                    }
+
                     results.push(DiscoveredSoloist {
                         pid: Some(pid),
                         exe_path: args.first().cloned(),
