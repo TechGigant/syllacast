@@ -518,7 +518,8 @@ fn test_server_message_update_serialization() {
         current_version: "1.0.0".to_string(),
         latest_version: "1.0.1".to_string(),
         is_critical_security_update: false,
-        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1".to_string(),
+        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1"
+            .to_string(),
         release_notes: Some("Fixes and features".to_string()),
         published_at: "2026-10-13T20:00:00Z".to_string(),
         download_url: None,
@@ -556,7 +557,8 @@ async fn test_ws_on_connect_update_notification_logic() {
         current_version: "1.0.0".to_string(),
         latest_version: "1.0.1".to_string(),
         is_critical_security_update: false,
-        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1".to_string(),
+        release_notes_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.0.1"
+            .to_string(),
         release_notes: None,
         published_at: "2026-10-13T20:00:00Z".to_string(),
         download_url: None,
@@ -573,8 +575,10 @@ async fn test_ws_on_connect_update_notification_logic() {
         snoozed_until: None,
     };
 
-    let mut settings = KioskSettings::default();
-    settings.update_mode = "notify".to_string();
+    let mut settings = KioskSettings {
+        update_mode: "notify".to_string(),
+        ..Default::default()
+    };
 
     // 1. When unsnoozed and update_mode == "notify": update should be dispatched
     let now_ms = Utc::now().timestamp_millis();

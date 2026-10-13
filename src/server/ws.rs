@@ -82,7 +82,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<SharedState>) {
                             .snoozed_update_until
                             .map(|s| s > now_ms)
                             .unwrap_or(false);
-                    if !is_snoozed && (settings.update_mode != "disabled" || dto.is_critical_security_update) {
+                    if !is_snoozed
+                        && (settings.update_mode != "disabled" || dto.is_critical_security_update)
+                    {
                         let update_msg = ServerMessage::UpdateAvailable(dto);
                         if let Ok(text) = serde_json::to_string(&update_msg) {
                             let _ = sender.send(Message::Text(text.into())).await;
