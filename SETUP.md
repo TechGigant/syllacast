@@ -1,6 +1,6 @@
-# Syllacast Setup & Deployment Guide
+# Syllacast Setup & Deployment Guide — Unofficial Port of Spicy Lyrics
 
-This guide walks you through setting up and running **Syllacast**, from initial API registration to full deployment on desktops, single-board computers (such as a Raspberry Pi), or Docker containers.
+This guide walks you through setting up and running **Syllacast** (an unofficial port of Spicy Lyrics), from initial API registration to full deployment on desktops, single-board computers (such as a Raspberry Pi), or Docker containers.
 
 ---
 
@@ -105,7 +105,7 @@ The wizard will:
 1. Prompt for and validate your Spicy Lyrics API key.
 2. Auto-detect Spotify Soloist and test local WebSocket connectivity.
 3. Configure bind address and port (defaulting to `0.0.0.0:8080`).
-4. Automatically write `/etc/syllacast/syllacast.env`.
+4. Automatically write `/opt/syllacast/.env` (with `0600` permissions).
 5. Automatically generate, enable, and start `/etc/systemd/system/syllacast.service`.
 
 ---
@@ -121,16 +121,19 @@ If you prefer to configure systemd manually:
    sudo chmod +x /opt/syllacast/syllacast
    ```
 
-2. **Create configuration directory**:
+2. **Create configuration file**:
    ```bash
-   sudo mkdir -p /etc/syllacast
-   sudo nano /etc/syllacast/syllacast.env
+   sudo nano /opt/syllacast/.env
    ```
    Insert your configuration:
    ```env
    SPICY_LYRICS_SECRET_KEY=sl_sk_your_key_here
    SYLLACAST_PORT=8080
    SYLLACAST_BIND=0.0.0.0
+   ```
+   Secure the file permissions:
+   ```bash
+   sudo chmod 600 /opt/syllacast/.env
    ```
 
 3. **Create the `systemd` service unit**:
@@ -141,7 +144,7 @@ If you prefer to configure systemd manually:
    ```ini
    [Unit]
    Description=Syllacast Spotify Lyrics Display Service
-   After=network-online.target
+   After=network.target network-online.target
    Wants=network-online.target
 
    [Service]
@@ -149,7 +152,7 @@ If you prefer to configure systemd manually:
    User=soloist-appliance
    Group=soloist-appliance
    WorkingDirectory=/opt/syllacast
-   EnvironmentFile=/etc/syllacast/syllacast.env
+   EnvironmentFile=/opt/syllacast/.env
    ExecStart=/opt/syllacast/syllacast
    Restart=always
    RestartSec=5s
@@ -223,7 +226,7 @@ If you prefer to configure systemd manually:
 
 ## 5. In-App Controls & Customization
 
-Syllacast features an authentic replica of the Spicy Lyrics controls. All settings are persisted automatically in `settings.json` and sync across connected clients.
+Syllacast features an authentic port of the Spicy Lyrics controls. All settings are persisted automatically in `settings.json` and sync across connected clients.
 
 - **Romanization Pill (`a` / `あ`)**:
   Located in the floating pill dock at the bottom-right. Toggles Latin transliteration for languages using non-Latin scripts (e.g. Japanese, Korean, Russian).

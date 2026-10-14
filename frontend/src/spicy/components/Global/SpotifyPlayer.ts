@@ -498,40 +498,49 @@ export const SpotifyPlayer = {
       }
     }
 
-    function waitForWidgetMounted() {
-      nowPlayingWidget = document.querySelector<HTMLElement>(
-        ".main-nowPlayingWidget-nowPlaying"
-      );
-      if (!nowPlayingWidget) {
-        setTimeout(waitForWidgetMounted, 300);
-        return;
-      }
-      nowPlayingWidget.append(...Array.from(widgetStash));
-    }
+    // In standalone kiosk mode, Spicetify's desktop playbar does not exist.
+    // Guard against running infinite 300ms setTimeout polling loops in standalone browser/kiosk mode.
+    const isSpicetifyDesktop = !!(
+      document.querySelector('[data-testid="now-playing-bar"]') ||
+      document.querySelector(".main-nowPlayingBar-container")
+    );
 
-    (function attachObserver() {
-      const leftPlayer =
-        document.querySelector<HTMLElement>(".main-nowPlayingBar-left") ??
-        document.querySelector<HTMLElement>(".qqAX5M23YurntqVJ_8Dt") ??
-        document.querySelector<HTMLElement>(".main-nowPlayingWidget-actionButtonWrapper") ??
-        document.querySelector<HTMLElement>(
-          ".main-nowPlayingWidget-nowPlaying > div:last-of-type"
+    if (isSpicetifyDesktop) {
+      function waitForWidgetMounted() {
+        nowPlayingWidget = document.querySelector<HTMLElement>(
+          ".main-nowPlayingWidget-nowPlaying"
         );
-      if (!leftPlayer) {
-        setTimeout(attachObserver, 300);
-        return;
-      }
-      waitForWidgetMounted();
-      const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          if (mutation.removedNodes.length > 0) {
-            nowPlayingWidget = null;
-            waitForWidgetMounted();
-          }
+        if (!nowPlayingWidget) {
+          setTimeout(waitForWidgetMounted, 300);
+          return;
         }
-      });
-      observer.observe(leftPlayer, { childList: true });
-    })();
+        nowPlayingWidget.append(...Array.from(widgetStash));
+      }
+
+      (function attachObserver() {
+        const leftPlayer =
+          document.querySelector<HTMLElement>(".main-nowPlayingBar-left") ??
+          document.querySelector<HTMLElement>(".qqAX5M23YurntqVJ_8Dt") ??
+          document.querySelector<HTMLElement>(".main-nowPlayingWidget-actionButtonWrapper") ??
+          document.querySelector<HTMLElement>(
+            ".main-nowPlayingWidget-nowPlaying > div:last-of-type"
+          );
+        if (!leftPlayer) {
+          setTimeout(attachObserver, 300);
+          return;
+        }
+        waitForWidgetMounted();
+        const observer = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            if (mutation.removedNodes.length > 0) {
+              nowPlayingWidget = null;
+              waitForWidgetMounted();
+            }
+          }
+        });
+        observer.observe(leftPlayer, { childList: true });
+      })();
+    }
 
     return { Button, Widget, GetControls };
   })(),

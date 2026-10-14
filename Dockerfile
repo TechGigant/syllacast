@@ -23,17 +23,27 @@ RUN cargo build --release --package syllacast
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 syllacast && \
+    useradd -u 10001 -g syllacast -s /bin/false -m -d /app syllacast
 
 WORKDIR /app
 
 # Copy compiled backend binary (self-contained with embedded frontend assets)
 COPY --from=backend-builder /app/target/release/syllacast /app/syllacast
+RUN chown -R syllacast:syllacast /app && chmod 755 /app/syllacast
+
+USER syllacast
 
 ENV SYLLACAST_BIND=0.0.0.0 \
     SYLLACAST_PORT=8080
 
 EXPOSE 8080
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
+
 ENTRYPOINT ["/app/syllacast"]
+

@@ -48,6 +48,25 @@ export class DynamicBackgroundController {
     }
   }
 
+  start() {
+    if (this.kawarp) {
+      this.kawarp.start();
+    }
+  }
+
+  stop() {
+    if (this.kawarp) {
+      this.kawarp.stop();
+    }
+  }
+
+  dispose() {
+    if (this.kawarp) {
+      this.kawarp.dispose();
+      this.kawarp = null;
+    }
+  }
+
   setSpeed(isPlaying: boolean) {
     if (!this.kawarp) return;
     this.kawarp.setOptions({

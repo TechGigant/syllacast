@@ -1,0 +1,58 @@
+/*
+ * Syllacast - Standalone Spotify Lyrics Kiosk
+ * Bundled Open-Source Offline Typography
+ * Inter (SIL OFL 1.1), Vazirmatn (SIL OFL 1.1), Noto Sans Georgian (SIL OFL 1.1)
+ *
+ * Copyright (C) 2026 TechGigant
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/* Inter weights (400, 500, 600, 700) */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
+/* Vazirmatn weights (400, 700) */
+@import "@fontsource/vazirmatn/400.css";
+@import "@fontsource/vazirmatn/700.css";
+
+/* Noto Sans Georgian weights (400, 700) */
+@import "@fontsource/noto-sans-georgian/400.css";
+@import "@fontsource/noto-sans-georgian/700.css";
+
+/* Compatibility aliases for Spicy Lyrics legacy CSS rules */
+@font-face {
+  font-family: 'SpicyLyrics';
+  font-style: normal;
+  font-weight: 400;
+  src: url('@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'SpicyLyrics';
+  font-style: normal;
+  font-weight: 500;
+  src: url('@fontsource/inter/files/inter-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'SpicyLyrics';
+  font-style: normal;
+  font-weight: 600;
+  src: url('@fontsource/inter/files/inter-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'SpicyLyrics';
+  font-style: normal;
+  font-weight: 700;
+  src: url('@fontsource/inter/files/inter-latin-700-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'VazirmatnRegular';
+  font-style: normal;
+  font-weight: 400;
+  src: url('@fontsource/vazirmatn/files/vazirmatn-arabic-400-normal.woff2') format('woff2');
+}

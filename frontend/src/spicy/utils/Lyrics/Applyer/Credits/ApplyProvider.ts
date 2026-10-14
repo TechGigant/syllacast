@@ -13,15 +13,38 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-const ProviderMap = {
-    "spt": "Spotify",
-    "aml": "Apple Music",
+export const ProviderMap = {
+    "spt": "Spotify via Spicy Lyrics",
+    "spotify": "Spotify via Spicy Lyrics",
+    "aml": "Apple Music via Spicy Lyrics",
+    "apple_music": "Apple Music via Spicy Lyrics",
     "spl": "Spicy Lyrics",
+    "spicy_lyrics": "Spicy Lyrics",
+    "spicylyrics": "Spicy Lyrics",
     "ldb": "Local DB",
+    "local_db": "Local DB",
 } as const;
+
+export function getLyricsProviderName(source: string | undefined): string {
+  if (!source) return "unknown";
+  const src = source.toLowerCase().trim();
+  if (src in ProviderMap) {
+    return ProviderMap[src as keyof typeof ProviderMap];
+  }
+  if (src.includes("aml") || src.includes("apple")) {
+    return "Apple Music via Spicy Lyrics";
+  }
+  if (src.includes("spt") || src.includes("spotify")) {
+    return "Spotify via Spicy Lyrics";
+  }
+  if (src.includes("spl") || src.includes("spicy")) {
+    return "Spicy Lyrics";
+  }
+  return "unknown";
+}
 
 export function ApplyLyricsProvider(_data: any, _LyricsContainer: HTMLElement): void {
   // Syllacast kiosk displays persistent lyrics source attribution in the bottom footer.
-  // We do not append the redundant "Provided by: ..." element at the bottom of the lyrics container.
+  // We do not append a duplicate element at the bottom of the lyrics container.
   return;
 }

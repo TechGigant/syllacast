@@ -15,25 +15,9 @@
 
 import { DeepFreeze } from "../../utils/Addons.ts";
 
-const Fonts = DeepFreeze({
-  Lyrics: () => LoadFont("https://fonts.spikerko.org/spicy-lyrics/source.css"),
-  Vazirmatn: () => LoadFont("https://fonts.spikerko.org/Vazirmatn/source.css"),
-  NotoSansGeorgian: () => LoadFont("https://fonts.spikerko.org/NotoSansGeorgian/source.css"),
-});
-
 export default function LoadFonts() {
-  // Iterate over the functions in Fonts and execute each one
-  Object.values(Fonts).forEach((loadFontFunction) => {
-    loadFontFunction();
-  });
-}
-
-function LoadFont(url: string) {
-  const fontElement = document.createElement("link");
-  fontElement.href = url;
-  fontElement.rel = "stylesheet";
-  fontElement.type = "text/css";
-  document.head.appendChild(fontElement);
+  // All open-source OFL 1.1 fonts (Inter, Vazirmatn, Noto Sans Georgian) are bundled locally in Syllacast.
+  // Dynamic CDN injection is disabled to ensure 100% offline kiosk operation.
 }
 
 // const ApplyStyles = (element: HTMLElement, properties: Record<string, string>): void => {

@@ -102,14 +102,12 @@ const OpenPopupLyricsFlow = async () => {
     height: 379,
   });
 
-  // Copy style sheets over from the initial document
-  // so that the player looks the same.
-  // Only copy <link> elements with href starting with "https://fonts.spikerko.org" to the PiP window
+  // Copy style sheets over from the initial document so the PiP player looks the same.
   Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach((link: HTMLLinkElement) => {
     const href = link.getAttribute("href") || "";
     const classList = Array.from(link.classList || []);
-    const isFont = href.startsWith("https://fonts.spikerko.org");
-    const isLocalCss = /^\/[a-zA-Z]{2}.*\.css$/.test(href);
+    const isFont = href.includes("font") || href.includes("style");
+    const isLocalCss = /^\/[a-zA-Z]{2}.*\.css$/.test(href) || href.endsWith(".css");
     const isUserCss = (
       (href.endsWith("colors.css") || href.endsWith("user.css")) &&
       classList.length === 1 &&

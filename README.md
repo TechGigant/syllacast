@@ -1,6 +1,9 @@
-# Syllacast
+# Syllacast — Unofficial Port of Spicy Lyrics
 
-Network-synchronized Spotify lyrics display server and WebGL karaoke visualizer for kiosks, single-board computers, smart displays, desktops, and web browsers integrating with [Spotify Soloist](https://developer.spotify.com/documentation/soloist/).
+> [!NOTE]
+> **Notice**: Syllacast is an **unofficial port of Spicy Lyrics**. It is an independent third-party open-source project and is not affiliated with, maintained by, or endorsed by Spicy Lyrics, Spikerko, or Spotify.
+
+Syllacast is an unofficial port of Spicy Lyrics, providing a network-synchronized Spotify lyrics display server and WebGL karaoke visualizer for kiosks, single-board computers, smart displays, desktops, and web browsers integrating with [Spotify Soloist](https://developer.spotify.com/documentation/soloist/).
 
 Built with a high-performance **Rust backend** (Axum, Tokio) and a lightweight **TypeScript + WebGL frontend** featuring a faithful port of the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) typography and physics animation engine.
 

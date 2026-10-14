@@ -64,6 +64,10 @@ impl SpicyClient {
         self.cache.get(track_id)
     }
 
+    pub fn prune_expired_cache(&self) {
+        self.cache.prune_expired_disk_cache();
+    }
+
     pub async fn fetch_lyrics(&self, track_id: &str) -> LyricsFetchResult {
         // 1. Check Cache first
         match self.cache.lookup(track_id) {

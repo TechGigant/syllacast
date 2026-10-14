@@ -52,6 +52,10 @@ export function sendPlayerCommand(cmd: any) {
   }
 }
 
+const shimListeners = new Map<string, Map<(e: any) => void, (e: Event) => void>>();
+const shimEventTarget: EventTarget =
+  typeof window !== "undefined" ? window : new EventTarget();
+
 // Spicetify Platform Compatibility Shim for Syllacast
 export const Spicetify = {
   LocalStorage: {
@@ -128,13 +132,27 @@ export const Spicetify = {
     getHeart: (): boolean => false,
     setMute: (_mute: boolean) => {},
     addEventListener: (event: string, callback: (e: any) => void) => {
-      window.addEventListener(`spicetify:${event}`, (e: any) => callback(e.detail));
+      let eventMap = shimListeners.get(event);
+      if (!eventMap) {
+        eventMap = new Map();
+        shimListeners.set(event, eventMap);
+      }
+      const wrapper = (e: Event) => callback((e as CustomEvent).detail);
+      eventMap.set(callback, wrapper);
+      shimEventTarget.addEventListener(`spicetify:${event}`, wrapper as EventListener);
     },
     removeEventListener: (event: string, callback: (e: any) => void) => {
-      window.removeEventListener(`spicetify:${event}`, (e: any) => callback(e.detail));
+      const eventMap = shimListeners.get(event);
+      if (eventMap) {
+        const wrapper = eventMap.get(callback);
+        if (wrapper) {
+          shimEventTarget.removeEventListener(`spicetify:${event}`, wrapper as EventListener);
+          eventMap.delete(callback);
+        }
+      }
     },
     dispatchEvent: (event: string, detail?: any) => {
-      window.dispatchEvent(new CustomEvent(`spicetify:${event}`, { detail }));
+      shimEventTarget.dispatchEvent(new CustomEvent(`spicetify:${event}`, { detail }));
     },
   },
   CosmosAsync: {

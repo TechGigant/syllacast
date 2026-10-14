@@ -5,6 +5,7 @@
 pub mod theme;
 
 use crossterm::{
+    cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -37,6 +38,7 @@ pub enum Screen {
     Reconfigure,
     UninstallConfirm,
     UpdateSelect,
+    UpdatingRelease,
 }
 
 pub struct AppState {
@@ -165,10 +167,22 @@ impl AppState {
     }
 }
 
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(std::io::stdout(), Show);
+    }
+}
+
 pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
+    let _guard = TerminalGuard;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -176,9 +190,7 @@ pub async fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
 
     let res = main_loop(&mut terminal, &mut state).await;
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    drop(_guard);
 
     if let Err(e) = res {
         eprintln!("Installer error: {}", e);
@@ -195,6 +207,11 @@ async fn main_loop(
 
         if state.screen == Screen::WizardStep5Installing {
             execute_install_step(state).await;
+            continue;
+        }
+
+        if state.screen == Screen::UpdatingRelease {
+            execute_update_release_step(state).await;
             continue;
         }
 
@@ -321,11 +338,19 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
                 }
             }
             KeyCode::Char(c) => {
-                if state.user_mode_index == 2 {
+                if state.user_mode_index == 2 && (c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                {
                     state.custom_user.push(c);
                 }
             }
             KeyCode::Enter => {
+                if state.user_mode_index == 2 {
+                    let u = state.custom_user.trim();
+                    if u.is_empty() {
+                        state.error_msg = Some("Custom username cannot be empty.".to_string());
+                        return false;
+                    }
+                }
                 state.screen = Screen::WizardStep4Credentials;
             }
             _ => {}
@@ -368,6 +393,22 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
                     _ => {}
                 },
                 KeyCode::Enter => {
+                    match state.port.trim().parse::<u16>() {
+                        Ok(p) if p > 0 => p,
+                        _ => {
+                            state.error_msg = Some(
+                                "Invalid port number. Must be between 1 and 65535.".to_string(),
+                            );
+                            return false;
+                        }
+                    };
+                    if state.bind.trim().parse::<std::net::IpAddr>().is_err() {
+                        state.error_msg = Some(
+                            "Invalid bind address. Must be a valid IP address (e.g. 0.0.0.0 or 127.0.0.1)."
+                                .to_string(),
+                        );
+                        return false;
+                    }
                     if state.spicy_key.trim().is_empty() {
                         state.error_msg = Some("Warning: No Spicy Lyrics API key entered. Remote lyrics will be disabled.".to_string());
                     }
@@ -432,8 +473,19 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
                 _ => {}
             },
             KeyCode::Enter => {
-                let port: u16 = state.port.trim().parse().unwrap_or(8080);
-                let (user, group) = state.selected_service_user();
+                let port: u16 = match state.port.trim().parse() {
+                    Ok(p) if p > 0 => p,
+                    _ => {
+                        state.error_msg =
+                            Some("Invalid port number. Must be between 1 and 65535.".to_string());
+                        return false;
+                    }
+                };
+                let (user, group) = if let Some(ref existing_user) = state.existing.existing_user {
+                    (existing_user.clone(), existing_user.clone())
+                } else {
+                    state.selected_service_user()
+                };
                 let data_dir = if !state.custom_data_dir.trim().is_empty() {
                     PathBuf::from(state.custom_data_dir.trim())
                 } else if let Some(ref existing) = state.existing.existing_data_dir {
@@ -494,18 +546,8 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
             }
             KeyCode::Enter => {
                 if state.update_select_index == 0 {
-                    // Check & install latest GitHub release
-                    match actions::check_and_install_github_release().await {
-                        Ok(logs) => {
-                            state.install_logs = logs;
-                            state.existing = discovery::detect_existing_installation();
-                            state.health_status = None;
-                            state.screen = Screen::WizardStep6Finished;
-                        }
-                        Err(e) => {
-                            state.error_msg = Some(e);
-                        }
-                    }
+                    // Transition to progress display; main_loop executes after redraw
+                    state.screen = Screen::UpdatingRelease;
                 } else {
                     // Update from current running binary via wizard
                     state.screen = Screen::WizardStep1Preflight;
@@ -513,9 +555,26 @@ async fn handle_key_event(code: KeyCode, state: &mut AppState) -> bool {
             }
             _ => {}
         },
+
+        Screen::UpdatingRelease => {}
     }
 
     false
+}
+
+async fn execute_update_release_step(state: &mut AppState) {
+    match actions::check_and_install_github_release().await {
+        Ok(logs) => {
+            state.install_logs = logs;
+            state.existing = discovery::detect_existing_installation();
+            state.health_status = None;
+            state.screen = Screen::WizardStep6Finished;
+        }
+        Err(e) => {
+            state.error_msg = Some(e);
+            state.screen = Screen::UpdateSelect;
+        }
+    }
 }
 
 async fn execute_install_step(state: &mut AppState) {
@@ -576,6 +635,7 @@ fn render_ui(frame: &mut Frame, state: &AppState) {
         Screen::Reconfigure => render_reconfigure(frame, chunks[1], state),
         Screen::UninstallConfirm => render_uninstall(frame, chunks[1], state),
         Screen::UpdateSelect => render_update_select(frame, chunks[1], state),
+        Screen::UpdatingRelease => render_updating_release(frame, chunks[1], state),
     }
 
     render_footer(frame, chunks[2], state);
@@ -1625,6 +1685,43 @@ fn render_update_select(frame: &mut Frame, area: Rect, state: &AppState) {
         "  Use [↑/↓/TAB] to choose. Press [ENTER] to execute. Press [ESC] to return.",
         theme::style_muted(),
     )));
+
+    let p = Paragraph::new(lines);
+    frame.render_widget(p, inner);
+}
+
+fn render_updating_release(frame: &mut Frame, area: Rect, _state: &AppState) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme::SPOTIFY_GREEN))
+        .title(" [ Updating Syllacast from GitHub... ] ")
+        .title_style(theme::style_header())
+        .style(theme::style_card());
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  ⏳ Fetching and installing latest release from GitHub...",
+            Style::default()
+                .fg(theme::SPOTIFY_GREEN)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("  • Querying GitHub Releases API for latest stable release"),
+        Line::from("  • Verifying SHA-256 archive checksum fail-closed"),
+        Line::from("  • Extracting payload into randomized staging directory"),
+        Line::from("  • Atomically replacing /opt/syllacast/syllacast binary"),
+        Line::from("  • Restarting syllacast.service via systemd"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Please wait a moment while the update completes...",
+            theme::style_muted(),
+        )),
+    ];
 
     let p = Paragraph::new(lines);
     frame.render_widget(p, inner);

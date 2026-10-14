@@ -1,5 +1,8 @@
 # Open Source Attributions & Notices
 
+> [!NOTE]
+> **Notice**: Syllacast is an **unofficial port of Spicy Lyrics**. It is an independent third-party open-source project and is not affiliated with, maintained by, or endorsed by Spicy Lyrics, Spikerko, or Spotify. The frontend lyrics display, typography, and animation physics are ported from Spicy Lyrics under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
 Syllacast is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
 This project incorporates source code, visual designs, and typography algorithms from upstream open-source software.
 
@@ -19,7 +22,7 @@ Syllacast adapts and ports the following components from Spicy Lyrics into a sta
 - **Animation Physics**: Dynamic cubic spline interpolation and second-order spring physics for character/word sweep, scaling pulse, and text glow (`cubic-spline`, `d3-ease`).
 - **Dynamic Fluid Background**: Real-time WebGL fluid simulation canvas integration (`@kawarp/core`).
 - **Styles & Layout**: Visual themes, color extraction, typography styling, and UI layout primitives (`frontend/src/css/`).
-- **Playback Controls & UI**: Fullscreen media box, NowBar metadata display, volume capsule with drag/wheel/mute support, repeat mode toggle (`off`, `context`, `track` with dedicated visual indicators), shuffle toggle, seek bar, and track skip controls (`frontend/src/spicy/components/Utils/NowBar.ts`). Unsupported desktop Spotify actions (heart/favourite and library buttons) and redundant in-lyrics provider tags ("Provided by: unknown") have been removed.
+- **Playback Controls & UI**: Fullscreen media box, NowBar metadata display, volume capsule with drag/wheel/mute support, repeat mode toggle (`off`, `context`, `track` with dedicated visual indicators), shuffle toggle, seek bar, and track skip controls (`frontend/src/spicy/components/Utils/NowBar.ts`). Unsupported desktop Spotify actions (heart/favourite and library buttons) have been removed, with source attribution accurately displayed in the persistent footer in compliance with API terms.
 - **Kiosk Features**: Integrated digital clock header (`frontend/src/spicy/components/Utils/Clock.ts`), up-next queue drawer, multi-client isolated state synchronization, and a persistent footer linking to the source repository.
 - **Spicetify Bridge Shims**: Custom adapters in `frontend/src/bridge/` providing standalone compatibility shims for `Spicetify.Player`, `Spicetify.Platform`, and `Spicetify.LocalStorage` events so the UI runs outside the desktop Spotify client without requiring Spicetify.
 
@@ -68,6 +71,19 @@ Syllacast bundles and utilizes the following open-source dependencies in its fro
 | [nanostores](https://github.com/nanostores/nanostores) | MIT | Lightweight reactive state management |
 | [simplebar](https://github.com/Grsmto/simplebar) | MIT | Cross-browser smooth custom scrollbars |
 | [@tanstack/virtual-core](https://tanstack.com/virtual) | MIT | DOM virtualization for long lyric sheets |
+| [@fontsource/inter](https://fontsource.org/fonts/inter) | SIL OFL 1.1 | Bundled offline Inter typography |
+| [@fontsource/vazirmatn](https://fontsource.org/fonts/vazirmatn) | SIL OFL 1.1 | Bundled offline Vazirmatn typography |
+| [@fontsource/noto-sans-georgian](https://fontsource.org/fonts/noto-sans-georgian) | SIL OFL 1.1 | Bundled offline Noto Sans Georgian typography |
+
+### Bundled Open-Source Typography
+
+All fonts bundled and served locally by Syllacast are licensed under the **SIL Open Font License 1.1 (OFL-1.1)**, allowing unrestricted open-source redistribution, bundling, and offline use:
+
+| Typeface | Author / Source | License | Usage |
+| :--- | :--- | :--- | :--- |
+| **Inter** | Rasmus Andersson ([rsms.me/inter](https://rsms.me/inter)) | SIL OFL 1.1 | Primary display typography & syllable rendering |
+| **Vazirmatn** | Saber Rastikerdar ([github.com/rastikerdar/vazirmatn](https://github.com/rastikerdar/vazirmatn)) | SIL OFL 1.1 | Arabic/Persian script typography fallback |
+| **Noto Sans Georgian** | Google Fonts ([fonts.google.com](https://fonts.google.com/specimen/Noto+Sans+Georgian)) | SIL OFL 1.1 | Georgian script typography fallback |
 
 ### Backend Dependencies (Rust)
 

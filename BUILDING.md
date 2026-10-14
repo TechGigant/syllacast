@@ -1,6 +1,6 @@
-# Building Syllacast
+# Building Syllacast — Unofficial Port of Spicy Lyrics
 
-This document provides instructions for compiling and building **Syllacast** from source, covering both the TypeScript/WebGL frontend and the Rust backend, as well as Docker-based and cross-platform compilation targets.
+This document provides instructions for compiling and building **Syllacast** (an unofficial port of Spicy Lyrics) from source, covering both the TypeScript/WebGL frontend and the Rust backend, as well as Docker-based and cross-platform compilation targets.
 
 ---
 

@@ -5,7 +5,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-#[derive(Parser, Clone)]
+#[derive(Parser, Clone, Default)]
 #[command(
     name = "syllacast",
     about = "Network-synchronized Spotify lyrics display server"

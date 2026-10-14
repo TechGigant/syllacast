@@ -19,6 +19,12 @@ pub struct UpdateService {
     current_manifest: Arc<RwLock<Option<ReleaseManifest>>>,
 }
 
+impl Default for UpdateService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UpdateService {
     pub fn new() -> Self {
         let initial_status = UpdateStatusResponse {
@@ -40,6 +46,19 @@ impl UpdateService {
         }
     }
 
+    #[cfg(test)]
+    pub async fn set_status_for_test(&self, phase: UpdatePhase) {
+        let mut st = self.status.write().await;
+        st.status = phase;
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub async fn set_manifest_for_test(&self, manifest: Option<ReleaseManifest>) {
+        let mut m = self.current_manifest.write().await;
+        *m = manifest;
+    }
+
     pub async fn get_status(&self) -> UpdateStatusResponse {
         self.status.read().await.clone()
     }
@@ -59,7 +78,11 @@ impl UpdateService {
         let current_version = env!("CARGO_PKG_VERSION");
         let now_str = chrono::Utc::now().to_rfc3339();
 
-        match self.client.check_for_update(current_version).await {
+        match self
+            .client
+            .check_for_update(current_version, &current_settings.update_channel)
+            .await
+        {
             Ok(Some(manifest)) => {
                 let is_critical = manifest.is_critical_security_update;
                 let dto = UpdateNotificationDto {
@@ -87,13 +110,16 @@ impl UpdateService {
 
                 *self.current_manifest.write().await = Some(manifest.clone());
 
-                // Check if snoozed (critical updates bypass snooze)
+                // Check if snoozed or dismissed (critical updates bypass snooze & dismissal)
                 let now_ms = chrono::Utc::now().timestamp_millis();
+                let is_dismissed =
+                    current_settings.dismissed_update_version.as_deref() == Some(&manifest.version);
                 let is_snoozed = !is_critical
-                    && current_settings
-                        .snoozed_update_until
-                        .map(|s| s > now_ms)
-                        .unwrap_or(false);
+                    && (is_dismissed
+                        || current_settings
+                            .snoozed_update_until
+                            .map(|s| s > now_ms)
+                            .unwrap_or(false));
 
                 if !is_snoozed && (current_settings.update_mode != "disabled" || is_critical) {
                     if let Some(sender) = tx {
@@ -124,18 +150,29 @@ impl UpdateService {
 
     /// Triggers downloading and installing the currently available release.
     pub async fn apply_update(&self, tx: broadcast::Sender<ServerMessage>) -> Result<(), String> {
-        let manifest = self
-            .current_manifest
-            .read()
-            .await
-            .clone()
-            .ok_or_else(|| "No update currently available to apply.".to_string())?;
-
-        {
+        let manifest = {
             let mut st = self.status.write().await;
+            if matches!(
+                st.status,
+                UpdatePhase::Downloading
+                    | UpdatePhase::Verifying
+                    | UpdatePhase::Installing
+                    | UpdatePhase::Restarting
+            ) {
+                return Err("An update is already in progress.".to_string());
+            }
+
+            let manifest = self
+                .current_manifest
+                .read()
+                .await
+                .clone()
+                .ok_or_else(|| "No update currently available to apply.".to_string())?;
+
             st.status = UpdatePhase::Downloading;
             st.progress_percent = Some(5);
-        }
+            manifest
+        };
 
         let tx_clone = tx.clone();
         let status_ref = Arc::clone(&self.status);

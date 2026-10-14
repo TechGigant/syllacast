@@ -54,15 +54,17 @@ pub enum Commands {
     Serve(Box<Config>),
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Sanitize empty environment variables from systemd or shell to avoid clap argument errors
+/// Sanitizes empty environment variables from systemd or shell to avoid clap argument errors.
+pub fn sanitize_empty_env_vars() {
     for env_var in [
         "SOLOIST_DATA_DIR",
         "SOLOIST_WS_URL",
         "FRONTEND_DIST",
         "LYRICS_CACHE_DIR",
         "SYLLACAST_CONFIG_DIR",
+        "SPICY_LYRICS_SECRET_KEY",
+        "SYLLACAST_BIND",
+        "SYLLACAST_PORT",
     ] {
         if let Ok(val) = std::env::var(env_var) {
             if val.trim().is_empty() {
@@ -70,17 +72,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+}
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Load .env file before parsing CLI or evaluating clap env attributes
+    let _ = dotenvy::dotenv();
+
+    // 2. Sanitize empty environment variables on the single main thread
+    sanitize_empty_env_vars();
+
+    // 3. Parse CLI arguments
     let cli = Cli::parse();
 
+    // 4. Initialize multi-threaded Tokio runtime
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async_main(cli))
+}
+
+async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     if cli.install || matches!(cli.command, Some(Commands::Install | Commands::Setup)) {
         return installer::run_installer().await;
     }
 
-    // 1. Load .env file if available
-    let _ = dotenvy::dotenv();
-
-    // 2. Initialize tracing
+    // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -257,54 +273,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     if track_changed {
                         current.track = track;
-                        current.lyrics = None;
-
-                        if let Some(id) = track_id {
-                            // Check cache first synchronously
-                            match spicy_ref.lookup_cached(&id) {
-                                CacheLookup::Hit(cached) => {
-                                    current.lyrics = Some(*cached);
-                                    current.lyrics_status = LyricsStatus::Found;
-                                }
-                                CacheLookup::NegativeHit => {
-                                    current.lyrics = None;
-                                    current.lyrics_status = LyricsStatus::NotFound;
-                                }
-                                CacheLookup::Miss => {
-                                    current.lyrics_status = LyricsStatus::Loading;
-                                    let spicy = spicy_ref.clone();
-                                    let state_inner = Arc::clone(&state_ref);
-                                    let client_tx_inner = client_tx_ref.clone();
-
-                                    tokio::spawn(async move {
-                                        let res = spicy.fetch_lyrics(&id).await;
-                                        let mut s = state_inner.current_state.write().await;
-                                        if s.track.as_ref().map(|t| &t.id) == Some(&id) {
-                                            match res {
-                                                LyricsFetchResult::Found(l) => {
-                                                    s.lyrics = Some(*l);
-                                                    s.lyrics_status = LyricsStatus::Found;
-                                                }
-                                                LyricsFetchResult::NotFound => {
-                                                    s.lyrics = None;
-                                                    s.lyrics_status = LyricsStatus::NotFound;
-                                                }
-                                                LyricsFetchResult::Error(_) => {
-                                                    s.lyrics = None;
-                                                    s.lyrics_status = LyricsStatus::Error;
-                                                }
-                                            }
-                                            let snapshot = s.clone();
-                                            let _ = client_tx_inner
-                                                .send(ServerMessage::State(Box::new(snapshot)));
-                                        }
-                                    });
-                                }
-                            }
-                        } else {
-                            current.lyrics = None;
-                            current.lyrics_status = LyricsStatus::Idle;
-                        }
+                        sync_lyrics_for_track(
+                            &mut current,
+                            track_id,
+                            &spicy_ref,
+                            &state_ref,
+                            &client_tx_ref,
+                        );
                     } else if let Some(new_meta) = track {
                         // If same track, enrich metadata if previously missing duration or cover
                         if let Some(existing) = current.track.as_mut() {
@@ -333,7 +308,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     if track_changed {
                         current.track = track;
-                        current.lyrics = None;
                         // Reset timeline anchor immediately to 0 ms at current server epoch
                         current.position = Some(PositionAnchor {
                             position_ms: 0,
@@ -345,51 +319,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = soloist_cmd_tx_ref.try_send(SoloistCommand::get_state());
                         let _ = soloist_cmd_tx_ref.try_send(SoloistCommand::get_queue(Some(10)));
 
-                        if let Some(id) = track_id {
-                            match spicy_ref.lookup_cached(&id) {
-                                CacheLookup::Hit(cached) => {
-                                    current.lyrics = Some(*cached);
-                                    current.lyrics_status = LyricsStatus::Found;
-                                }
-                                CacheLookup::NegativeHit => {
-                                    current.lyrics = None;
-                                    current.lyrics_status = LyricsStatus::NotFound;
-                                }
-                                CacheLookup::Miss => {
-                                    current.lyrics_status = LyricsStatus::Loading;
-                                    let spicy = spicy_ref.clone();
-                                    let state_inner = Arc::clone(&state_ref);
-                                    let client_tx_inner = client_tx_ref.clone();
-
-                                    tokio::spawn(async move {
-                                        let res = spicy.fetch_lyrics(&id).await;
-                                        let mut s = state_inner.current_state.write().await;
-                                        if s.track.as_ref().map(|t| &t.id) == Some(&id) {
-                                            match res {
-                                                LyricsFetchResult::Found(l) => {
-                                                    s.lyrics = Some(*l);
-                                                    s.lyrics_status = LyricsStatus::Found;
-                                                }
-                                                LyricsFetchResult::NotFound => {
-                                                    s.lyrics = None;
-                                                    s.lyrics_status = LyricsStatus::NotFound;
-                                                }
-                                                LyricsFetchResult::Error(_) => {
-                                                    s.lyrics = None;
-                                                    s.lyrics_status = LyricsStatus::Error;
-                                                }
-                                            }
-                                            let snapshot = s.clone();
-                                            let _ = client_tx_inner
-                                                .send(ServerMessage::State(Box::new(snapshot)));
-                                        }
-                                    });
-                                }
-                            }
-                        } else {
-                            current.lyrics = None;
-                            current.lyrics_status = LyricsStatus::Idle;
-                        }
+                        sync_lyrics_for_track(
+                            &mut current,
+                            track_id,
+                            &spicy_ref,
+                            &state_ref,
+                            &client_tx_ref,
+                        );
 
                         let snapshot = current.clone();
                         let _ = client_tx_ref.send(ServerMessage::State(Box::new(snapshot)));
@@ -459,7 +395,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // 9. Start Axum HTTP/WebSocket server
+    // 9. Periodic disk cache pruning (every 12 hours) to discard expired lyrics files on 24/7 kiosks
+    let cache_pruner = spicy_client.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(12 * 3600));
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            tracing::info!("Running scheduled periodic pruning of expired lyrics cache files...");
+            cache_pruner.prune_expired_cache();
+        }
+    });
+
+    // 10. Start Axum HTTP/WebSocket server
     let app = server::create_router(shared_state);
     let addr: SocketAddr = format!("{}:{}", config.bind, config.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -467,6 +415,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Helper to synchronize lyrics for a track, checking cache and deduplicating in-flight requests.
+pub fn sync_lyrics_for_track(
+    current: &mut AppStateSnapshot,
+    track_id: Option<String>,
+    spicy_client: &SpicyClient,
+    shared_state: &Arc<server::SharedState>,
+    client_tx: &broadcast::Sender<ServerMessage>,
+) {
+    let id = match track_id {
+        Some(id) => id,
+        None => {
+            current.lyrics = None;
+            current.lyrics_status = LyricsStatus::Idle;
+            return;
+        }
+    };
+
+    // If lyrics are already loaded or currently loading for this exact track, skip redundant fetch
+    if current.track.as_ref().map(|t| &t.id) == Some(&id) {
+        if current.lyrics_status == LyricsStatus::Loading {
+            return;
+        }
+        if current.lyrics.is_some() && current.lyrics_status == LyricsStatus::Found {
+            return;
+        }
+    }
+
+    current.lyrics = None;
+
+    // Check disk & memory cache synchronously
+    match spicy_client.lookup_cached(&id) {
+        CacheLookup::Hit(cached) => {
+            current.lyrics = Some(*cached);
+            current.lyrics_status = LyricsStatus::Found;
+        }
+        CacheLookup::NegativeHit => {
+            current.lyrics = None;
+            current.lyrics_status = LyricsStatus::NotFound;
+        }
+        CacheLookup::Miss => {
+            current.lyrics_status = LyricsStatus::Loading;
+            let spicy = spicy_client.clone();
+            let state_inner = Arc::clone(shared_state);
+            let client_tx_inner = client_tx.clone();
+
+            tokio::spawn(async move {
+                let res = spicy.fetch_lyrics(&id).await;
+                let mut s = state_inner.current_state.write().await;
+                if s.track.as_ref().map(|t| &t.id) == Some(&id) {
+                    match res {
+                        LyricsFetchResult::Found(l) => {
+                            s.lyrics = Some(*l);
+                            s.lyrics_status = LyricsStatus::Found;
+                        }
+                        LyricsFetchResult::NotFound => {
+                            s.lyrics = None;
+                            s.lyrics_status = LyricsStatus::NotFound;
+                        }
+                        LyricsFetchResult::Error(_) => {
+                            s.lyrics = None;
+                            s.lyrics_status = LyricsStatus::Error;
+                        }
+                    }
+                    let snapshot = s.clone();
+                    let _ = client_tx_inner.send(ServerMessage::State(Box::new(snapshot)));
+                }
+            });
+        }
+    }
 }
 
 fn extract_metadata(entity: &SoloistEntity) -> Option<TrackMetadata> {

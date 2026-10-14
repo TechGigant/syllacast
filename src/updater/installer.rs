@@ -18,6 +18,33 @@ pub struct UpdateInstaller {
     http: reqwest::Client,
 }
 
+impl Default for UpdateInstaller {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Verifies SHA256 checksum of downloaded bytes. Fails closed if expected hash is empty.
+pub fn verify_archive_checksum(bytes: &[u8], expected_sha256: &str) -> Result<(), String> {
+    let expected = expected_sha256.trim();
+    if expected.is_empty() {
+        return Err("Aborted update: could not retrieve expected SHA256 checksum.".to_string());
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let computed_sha256 = format!("{:x}", hasher.finalize());
+
+    if !computed_sha256.eq_ignore_ascii_case(expected) {
+        return Err(format!(
+            "SHA256 checksum mismatch! Expected: {}, got: {}",
+            expected, computed_sha256
+        ));
+    }
+
+    Ok(())
+}
+
 impl UpdateInstaller {
     pub fn new() -> Self {
         let http = reqwest::Client::builder()
@@ -102,9 +129,13 @@ impl UpdateInstaller {
             &format!("Downloading {}...", target_info.archive_name),
         );
 
-        // Create staging temporary directory
+        // Create staging temporary directory with nanosecond randomization
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         let temp_dir =
-            std::env::temp_dir().join(format!("syllacast-update-{}", std::process::id()));
+            std::env::temp_dir().join(format!("syllacast-update-{}-{}", std::process::id(), nanos));
         if temp_dir.exists() {
             let _ = fs::remove_dir_all(&temp_dir);
         }
@@ -114,38 +145,37 @@ impl UpdateInstaller {
         let archive_path = temp_dir.join(&target_info.archive_name);
 
         // 1. Download archive with progress
-        let resp = self
-            .http
-            .get(&target_info.download_url)
-            .send()
-            .await
-            .map_err(|e| format!("Failed to download archive: {}", e))?;
+        let resp = match self.http.get(&target_info.download_url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Err(format!("Failed to download archive: {}", e));
+            }
+        };
 
         if !resp.status().is_success() {
+            let _ = fs::remove_dir_all(&temp_dir);
             return Err(format!("Download returned HTTP status {}", resp.status()));
         }
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read archive bytes: {}", e))?;
-
-        fs::write(&archive_path, &bytes)
-            .map_err(|e| format!("Failed to write archive to disk: {}", e))?;
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Err(format!("Failed to read archive bytes: {}", e));
+            }
+        };
 
         progress_callback("verifying", 50, "Verifying SHA256 integrity checksum...");
 
-        // 2. SHA256 checksum verification
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let computed_sha256 = format!("{:x}", hasher.finalize());
-
+        // 2. Resolve expected SHA256 checksum (from manifest or SHA256SUMS.txt)
         let mut expected_sha256 = target_info.sha256.clone();
         if expected_sha256.is_empty() {
-            // Attempt fetching SHA256SUMS.txt from the release tag
+            let repo = std::env::var("SYLLACAST_GITHUB_REPO")
+                .unwrap_or_else(|_| "TechGigant/syllacast".to_string());
             let sums_url = format!(
-                "https://github.com/TechGigant/syllacast/releases/download/{}/SHA256SUMS.txt",
-                manifest.tag_name
+                "https://github.com/{}/releases/download/{}/SHA256SUMS.txt",
+                repo, manifest.tag_name
             );
             if let Ok(sums_resp) = self.http.get(&sums_url).send().await {
                 if sums_resp.status().is_success() {
@@ -162,13 +192,38 @@ impl UpdateInstaller {
             }
         }
 
-        if !expected_sha256.is_empty() && !computed_sha256.eq_ignore_ascii_case(&expected_sha256) {
+        // Fail-closed verification: abort immediately if expected checksum is missing
+        if expected_sha256.is_empty() {
             let _ = fs::remove_dir_all(&temp_dir);
-            return Err(format!(
-                "SHA256 checksum mismatch! Expected: {}, got: {}",
-                expected_sha256, computed_sha256
-            ));
+            return Err("Aborted update: could not retrieve expected SHA256 checksum.".to_string());
         }
+
+        // Offload verification & disk writes to blocking task
+        let temp_dir_for_verify = temp_dir.clone();
+        let bytes_for_verify = bytes.clone();
+        let expected_sha256_for_verify = expected_sha256.clone();
+        let archive_path_for_verify = archive_path.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            verify_archive_checksum(&bytes_for_verify, &expected_sha256_for_verify).inspect_err(
+                |_| {
+                    let _ = fs::remove_dir_all(&temp_dir_for_verify);
+                },
+            )?;
+
+            fs::write(&archive_path_for_verify, &bytes_for_verify).map_err(|e| {
+                let _ = fs::remove_dir_all(&temp_dir_for_verify);
+                format!("Failed to write archive to disk: {}", e)
+            })?;
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| {
+            let _ = fs::remove_dir_all(&temp_dir);
+            format!("Verification task failed: {}", e)
+        })??;
+
         info!(
             "✓ SHA256 integrity verified for {}",
             target_info.archive_name
@@ -180,58 +235,91 @@ impl UpdateInstaller {
             "Extracting binary and preparing atomic replacement...",
         );
 
-        // 3. Extract .tar.gz archive
-        let tar_gz = File::open(&archive_path)
-            .map_err(|e| format!("Failed to open downloaded archive: {}", e))?;
-        let tar = GzDecoder::new(tar_gz);
-        let mut archive = Archive::new(tar);
+        // 3. Resolve destination path
+        let dest_path = match Self::resolve_destination_path() {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Err(e);
+            }
+        };
 
-        let extract_dir = temp_dir.join("extracted");
-        fs::create_dir_all(&extract_dir)
-            .map_err(|e| format!("Failed to create extract directory: {}", e))?;
+        let temp_dir_for_install = temp_dir.clone();
+        let dest_path_for_install = dest_path.clone();
 
-        archive
-            .unpack(&extract_dir)
-            .map_err(|e| format!("Failed to extract archive contents: {}", e))?;
+        // 4. Offload extraction, permissions, and atomic replacement to blocking task
+        tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
+            let tar_gz = File::open(&archive_path).map_err(|e| {
+                let _ = fs::remove_dir_all(&temp_dir_for_install);
+                format!("Failed to open downloaded archive: {}", e)
+            })?;
+            let tar = GzDecoder::new(tar_gz);
+            let mut archive = Archive::new(tar);
 
-        // 4. Locate extracted syllacast binary
-        let extracted_bin = extract_dir.join("syllacast");
-        if !extracted_bin.exists() {
+            let extract_dir = temp_dir_for_install.join("extracted");
+            fs::create_dir_all(&extract_dir).map_err(|e| {
+                let _ = fs::remove_dir_all(&temp_dir_for_install);
+                format!("Failed to create extract directory: {}", e)
+            })?;
+
+            archive.unpack(&extract_dir).map_err(|e| {
+                let _ = fs::remove_dir_all(&temp_dir_for_install);
+                format!("Failed to extract archive contents: {}", e)
+            })?;
+
+            let extracted_bin = extract_dir.join("syllacast");
+            if !extracted_bin.exists() {
+                let _ = fs::remove_dir_all(&temp_dir_for_install);
+                return Err(
+                    "Extracted archive does not contain 'syllacast' executable.".to_string()
+                );
+            }
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&extracted_bin, fs::Permissions::from_mode(0o755));
+            }
+
+            let temp_dest = dest_path_for_install.with_extension("new");
+            if let Err(e) = (|| -> Result<(), String> {
+                fs::copy(&extracted_bin, &temp_dest)
+                    .map_err(|e| format!("Failed to copy new binary to {:?}: {}", temp_dest, e))?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&temp_dest, fs::Permissions::from_mode(0o755));
+                }
+
+                fs::rename(&temp_dest, &dest_path_for_install).map_err(|e| {
+                    format!(
+                        "Failed to atomically replace binary at {:?}: {}",
+                        dest_path_for_install, e
+                    )
+                })?;
+
+                Ok(())
+            })() {
+                let _ = fs::remove_file(&temp_dest);
+                let _ = fs::remove_dir_all(&temp_dir_for_install);
+                return Err(e);
+            }
+
+            info!(
+                "✓ Successfully replaced binary at {:?}",
+                dest_path_for_install
+            );
+
+            let _ = fs::remove_dir_all(&temp_dir_for_install);
+
+            Ok(dest_path_for_install)
+        })
+        .await
+        .map_err(|e| {
             let _ = fs::remove_dir_all(&temp_dir);
-            return Err("Extracted archive does not contain 'syllacast' executable.".to_string());
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&extracted_bin, fs::Permissions::from_mode(0o755));
-        }
-
-        // 5. Determine destination path
-        let dest_path = Self::resolve_destination_path()?;
-
-        let temp_dest = dest_path.with_extension("new");
-        fs::copy(&extracted_bin, &temp_dest)
-            .map_err(|e| format!("Failed to copy new binary to {:?}: {}", temp_dest, e))?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&temp_dest, fs::Permissions::from_mode(0o755));
-        }
-
-        // 6. POSIX atomic rename
-        fs::rename(&temp_dest, &dest_path).map_err(|e| {
-            format!(
-                "Failed to atomically replace binary at {:?}: {}",
-                dest_path, e
-            )
-        })?;
-
-        info!("✓ Successfully replaced binary at {:?}", dest_path);
-
-        // Cleanup temp folder
-        let _ = fs::remove_dir_all(&temp_dir);
+            format!("Installation task failed: {}", e)
+        })??;
 
         progress_callback("restarting", 95, "Restarting service...");
 

@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
 
@@ -19,9 +19,21 @@ use crate::sync::protocol::ServerMessage;
 
 pub fn create_routes(state: Arc<SharedState>) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            |origin: &axum::http::HeaderValue, parts: &axum::http::request::Parts| {
+                if let Ok(origin_str) = origin.to_str() {
+                    let host_str = parts
+                        .headers
+                        .get(axum::http::header::HOST)
+                        .and_then(|h| h.to_str().ok());
+                    super::origin::is_allowed_origin(origin_str, host_str)
+                } else {
+                    false
+                }
+            },
+        ))
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
 
     let frontend_dir = state.config.resolve_frontend_dist();
 
@@ -37,7 +49,8 @@ pub fn create_routes(state: Arc<SharedState>) -> Router {
         .route("/api/updates/apply", axum::routing::post(apply_update))
         .route("/api/updates/snooze", axum::routing::post(snooze_update))
         .route("/state", get(get_state))
-        .route("/api/state", get(get_state));
+        .route("/api/state", get(get_state))
+        .route("/api/health", get(|| async { "ok" }));
 
     let router = if let Some(ref dir) = frontend_dir {
         info!("Serving frontend assets from disk override: {:?}", dir);

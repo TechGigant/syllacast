@@ -26,12 +26,6 @@ pub struct KioskSettings {
     #[serde(default = "default_true")]
     pub up_next_enabled: bool,
 
-    #[serde(default = "default_true")]
-    pub source_link_enabled: bool,
-
-    #[serde(default = "default_true")]
-    pub lyrics_source_enabled: bool,
-
     #[serde(default)]
     pub calibration_offset_ms: i32,
 
@@ -91,8 +85,6 @@ impl Default for KioskSettings {
             nowbar_side: "left".to_string(),
             clock_enabled: true,
             up_next_enabled: true,
-            source_link_enabled: true,
-            lyrics_source_enabled: true,
             calibration_offset_ms: 0,
             dynamic_bg_mode: "dynamic".to_string(),
             update_mode: "notify".to_string(),
@@ -147,7 +139,9 @@ impl SettingsManager {
             let _ = std::fs::create_dir_all(parent);
         }
         let json = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
-        std::fs::write(&self.file_path, json)?;
+        let tmp_path = self.file_path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, json)?;
+        std::fs::rename(&tmp_path, &self.file_path)?;
         info!("Saved kiosk settings to {:?}", self.file_path);
         Ok(())
     }

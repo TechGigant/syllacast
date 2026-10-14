@@ -1,6 +1,6 @@
 {
   "name": "syllacast-frontend",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Standalone WebGL and TypeScript lyrics display frontend ported from Spicy Lyrics",
   "license": "AGPL-3.0-or-later",
   "author": "TechGigant <https://github.com/TechGigant>",
@@ -28,6 +28,9 @@
     "vitest": "^5.0.4"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/noto-sans-georgian": "^5.3.0",
+    "@fontsource/vazirmatn": "^5.3.0",
     "@kawarp/core": "^1.3.1",
     "@tanstack/virtual-core": "^3.19.3",
     "cubic-spline": "^3.0.3",

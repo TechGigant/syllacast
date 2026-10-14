@@ -52,7 +52,7 @@ aside.NowPlayingView.spicy-dynamic-bg-in-this
 #SpicyLyricsPage.UseSpicyFont *,
 .SpicyLyricsFontPixel,
 .SpicyLyricsFontPixel * {
-  font-family: SpicyLyrics, "Noto Sans Georgian", "VazirmatnRegular", sans-serif !important;
+  font-family: Inter, SpicyLyrics, "Noto Sans Georgian", "Vazirmatn", "VazirmatnRegular", sans-serif !important;
 }
 
 :is(.Root__main-view, :where(#main-view)):has(#SpicyLyricsPage) .main-view-container__scroll-node-child,

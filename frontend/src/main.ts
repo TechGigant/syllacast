@@ -53,8 +53,6 @@ export interface KioskSettings {
   nowbar_side: string;
   clock_enabled: boolean;
   up_next_enabled: boolean;
-  source_link_enabled: boolean;
-  lyrics_source_enabled: boolean;
   calibration_offset_ms: number;
   dynamic_bg_mode: string;
   update_mode?: string;
@@ -150,11 +148,7 @@ function applyKioskSettings(settings: KioskSettings) {
   // 3. Up Next queue visibility
   kioskUpNext.element.style.display = settings.up_next_enabled ? "flex" : "none";
 
-  // 4. Footer attributions
-  kioskFooter.setLyricsSourceVisible(settings.lyrics_source_enabled);
-  kioskFooter.setSourceLinkVisible(settings.source_link_enabled);
-
-  // 5. Calibration offset
+  // 4. Calibration offset
   if (typeof settings.calibration_offset_ms === "number") {
     timeline.setCalibrationMs(settings.calibration_offset_ms);
     if (calibSlider) calibSlider.value = settings.calibration_offset_ms.toString();
@@ -324,7 +318,7 @@ function handleStateUpdate(state: AppStateSnapshot) {
       ClearLyricsContentArrays();
       ClearScrollSimplebar();
       ClearLyricsPageContainer();
-      kioskFooter.updateLyricsSource(undefined);
+      kioskFooter.updateLyricsSource(null);
     } else if (lyricsStatus === "loading") {
       // Server is currently fetching lyrics
       ShowLoaderContainer(currentUri);
@@ -332,7 +326,7 @@ function handleStateUpdate(state: AppStateSnapshot) {
       ClearLyricsContentArrays();
       ClearScrollSimplebar();
       ClearLyricsPageContainer();
-      kioskFooter.updateLyricsSource(undefined);
+      kioskFooter.updateLyricsSource(null);
     } else if (lyricsStatus === "found" && state.lyrics?.Body) {
       // Lyrics retrieved successfully
       ResetLastLine();
@@ -342,19 +336,22 @@ function handleStateUpdate(state: AppStateSnapshot) {
       presentLyrics(lyricsBody);
       void ApplyLyrics([lyricsBody, 200, currentUri]);
       const uploader =
-        lyricsBody.UploadAttribution?.Uploader?.username ??
-        lyricsBody.TTMLUploadMetadata?.Uploader?.username;
-      kioskFooter.updateLyricsSource(lyricsBody.source, uploader);
+        lyricsBody.UploadAttribution?.Uploader ??
+        lyricsBody.TTMLUploadMetadata?.Uploader;
+      const maker =
+        lyricsBody.UploadAttribution?.Maker ??
+        lyricsBody.TTMLUploadMetadata?.Maker;
+      kioskFooter.updateLyricsSource(lyricsBody.source, uploader, maker);
     } else if (lyricsStatus === "not_found") {
       // 404 - no lyrics available for this song
       setLyricsPayload(null, currentUri);
       void ApplyLyrics(["lyrics-not-found", 404, currentUri]);
-      kioskFooter.updateLyricsSource(undefined);
+      kioskFooter.updateLyricsSource(null);
     } else if (lyricsStatus === "error") {
       // Server error or network issue
       setLyricsPayload(null, currentUri);
       void ApplyLyrics(["unknown-error", 500, currentUri]);
-      kioskFooter.updateLyricsSource(undefined);
+      kioskFooter.updateLyricsSource(null);
     }
   }
 }

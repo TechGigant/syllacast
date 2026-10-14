@@ -10,12 +10,42 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { getLyricsProviderName } from "../spicy/utils/Lyrics/Applyer/Credits/ApplyProvider.ts";
+
+export interface ContributorInfo {
+  username?: string;
+  url?: string;
+}
+
 export interface KioskFooterController {
   element: HTMLElement;
-  updateLyricsSource: (source: string | undefined, uploader?: string) => void;
-  setLyricsSourceVisible: (visible: boolean) => void;
+  updateLyricsSource: (
+    source: string | null | undefined,
+    uploader?: ContributorInfo | string,
+    maker?: ContributorInfo | string
+  ) => void;
+  setLyricsSourceVisible?: (visible: boolean) => void;
   setSourceLinkVisible: (visible: boolean) => void;
   destroy: () => void;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function isSafeUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url, "http://localhost");
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function createKioskFooter(): KioskFooterController {
@@ -40,9 +70,7 @@ export function createKioskFooter(): KioskFooterController {
   `;
 
   footerEl.innerHTML = `
-    <div class="KioskFooterLeft" style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-      <span class="KioskLyricsProviderText">Lyrics provided by Spicy Lyrics</span>
-    </div>
+    <div class="KioskFooterLeft" style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
     <div class="KioskFooterRight" style="display: flex; align-items: center; gap: 6px;">
       <a href="https://github.com/TechGigant/syllacast" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline; opacity: 0.85;">
         https://github.com/TechGigant/syllacast
@@ -52,42 +80,78 @@ export function createKioskFooter(): KioskFooterController {
 
   const leftEl = footerEl.querySelector(".KioskFooterLeft") as HTMLElement;
   const rightEl = footerEl.querySelector(".KioskFooterRight") as HTMLElement;
-  const providerTextEl = footerEl.querySelector(".KioskLyricsProviderText") as HTMLElement;
 
-  function updateLyricsSource(source?: string, uploader?: string) {
-    if (!source) {
-      providerTextEl.textContent = "Lyrics provided by Spicy Lyrics";
+  function updateLyricsSource(
+    source: string | null | undefined,
+    uploader?: ContributorInfo | string,
+    maker?: ContributorInfo | string
+  ) {
+    if (source === null) {
+      leftEl.innerHTML = "";
       return;
     }
 
-    let provider = "Spicy Lyrics";
-    const src = source.toLowerCase();
-    if (src.includes("aml") || src.includes("apple")) {
-      provider = "Apple Music via Spicy Lyrics";
-    } else if (src.includes("spt") || src.includes("spotify")) {
-      provider = "Spotify via Spicy Lyrics";
+    const provider = getLyricsProviderName(source);
+
+    const uploaderObj: ContributorInfo | undefined =
+      typeof uploader === "string" ? { username: uploader } : uploader;
+    const makerObj: ContributorInfo | undefined =
+      typeof maker === "string" ? { username: maker } : maker;
+
+    function renderContributorSpan(rolePrefix: string, c?: ContributorInfo): string {
+      if (!c?.username) return "";
+      const name = escapeHtml(c.username);
+      if (isSafeUrl(c.url)) {
+        const safeHref = escapeHtml(c.url!);
+        return ` • ${rolePrefix} <a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline;">@${name}</a> (<a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline;">${safeHref}</a>)`;
+      }
+      return ` • ${rolePrefix} @${name}`;
     }
 
-    let text = `Lyrics provided by ${provider}`;
-    if (uploader) {
-      text += ` • Synced by ${uploader}`;
+    let communityCredits = "";
+    if (uploaderObj?.username && makerObj?.username && uploaderObj.username === makerObj.username) {
+      communityCredits = renderContributorSpan("Synced & made by", uploaderObj);
+    } else {
+      if (uploaderObj?.username) {
+        communityCredits += renderContributorSpan("Synced by", uploaderObj);
+      }
+      if (makerObj?.username) {
+        communityCredits += renderContributorSpan("Made by", makerObj);
+      }
     }
-    providerTextEl.textContent = text;
-  }
 
-  function setLyricsSourceVisible(visible: boolean) {
-    leftEl.style.display = visible ? "flex" : "none";
-  }
+    const hasContributorUrl =
+      (uploaderObj?.url && isSafeUrl(uploaderObj.url)) ||
+      (makerObj?.url && isSafeUrl(makerObj.url));
 
-  function setSourceLinkVisible(visible: boolean) {
-    rightEl.style.display = visible ? "flex" : "none";
+    const providerSafe = escapeHtml(provider);
+    let providerHtml = providerSafe;
+    if (provider.includes("Spicy Lyrics")) {
+      const spicyUrl = "https://spicylyrics.org";
+      providerHtml = `<a href="${spicyUrl}" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline;">${providerSafe}</a>`;
+      if (!hasContributorUrl) {
+        providerHtml += ` (<a href="${spicyUrl}" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline;">${spicyUrl}</a>)`;
+      }
+    }
+
+    leftEl.innerHTML = `
+      <span class="KioskLyricsProviderText">Lyrics provided by ${providerHtml}</span>
+      ${communityCredits}
+    `;
+    leftEl.style.display = "flex";
   }
 
   return {
     element: footerEl,
     updateLyricsSource,
-    setLyricsSourceVisible,
-    setSourceLinkVisible,
+    setLyricsSourceVisible: (_visible: boolean) => {
+      // Attribution can be quiet (0.42 opacity) but never absent per upstream terms Section 6.
+      // Hiding attribution is deliberately disallowed.
+    },
+    setSourceLinkVisible: (_visible: boolean) => {
+      // Source code link is permanent per AGPL-3.0 network source offer and kiosk requirements.
+      // Hiding the source code link is deliberately disallowed.
+    },
     destroy: () => footerEl.remove(),
   };
 }

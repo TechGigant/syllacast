@@ -40,6 +40,15 @@ pub struct LyricsCache {
     mem_cache: RwLock<HashMap<String, (DateTime<Utc>, CachePayload)>>,
 }
 
+/// Validates that a track ID contains only safe alphanumeric/underscore characters
+/// and is within acceptable length bounds (<= 64 chars) to prevent path traversal attacks.
+pub fn is_valid_track_id(track_id: &str) -> bool {
+    let clean = track_id.trim();
+    !clean.is_empty()
+        && clean.len() <= 64
+        && clean.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 impl LyricsCache {
     pub fn new(disk_dir: Option<PathBuf>) -> Self {
         if let Some(ref dir) = disk_dir {
@@ -60,6 +69,11 @@ impl LyricsCache {
     }
 
     pub fn lookup(&self, track_id: &str) -> CacheLookup {
+        if !is_valid_track_id(track_id) {
+            warn!("Rejected invalid track_id for lookup: {:?}", track_id);
+            return CacheLookup::Miss;
+        }
+
         let now = Utc::now();
 
         // 1. Check in-memory cache
@@ -138,6 +152,11 @@ impl LyricsCache {
     }
 
     pub fn store(&self, track_id: &str, lyrics: &LyricsEnvelope) {
+        if !is_valid_track_id(track_id) {
+            warn!("Rejected invalid track_id for store: {:?}", track_id);
+            return;
+        }
+
         let now = Utc::now();
         self.store_mem(track_id, now, CachePayload::Found(Box::new(lyrics.clone())));
 
@@ -156,6 +175,14 @@ impl LyricsCache {
     }
 
     pub fn store_not_found(&self, track_id: &str) {
+        if !is_valid_track_id(track_id) {
+            warn!(
+                "Rejected invalid track_id for store_not_found: {:?}",
+                track_id
+            );
+            return;
+        }
+
         let now = Utc::now();
         self.store_mem(track_id, now, CachePayload::NotFound);
 
@@ -187,7 +214,7 @@ impl LyricsCache {
         mem.insert(track_id.to_string(), (time, payload));
     }
 
-    fn prune_expired_disk_cache(&self) {
+    pub fn prune_expired_disk_cache(&self) {
         if let Some(ref dir) = self.disk_dir {
             if let Ok(entries) = fs::read_dir(dir) {
                 let now = Utc::now();

@@ -18,10 +18,34 @@ use crate::server::SharedState;
 use crate::sync::protocol::{ClientMessage, ServerMessage};
 
 pub async fn ws_handler(
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
     State(state): State<Arc<SharedState>>,
 ) -> impl IntoResponse {
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok());
+
+    if let Some(origin_header) = headers.get(axum::http::header::ORIGIN) {
+        if let Ok(origin_str) = origin_header.to_str() {
+            if !super::origin::is_allowed_origin(origin_str, host) {
+                tracing::warn!(
+                    "Rejected WebSocket connection from unauthorized origin: {}",
+                    origin_str
+                );
+                return (
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Forbidden: cross-origin WebSocket connection rejected",
+                )
+                    .into_response();
+            }
+        } else {
+            return (axum::http::StatusCode::BAD_REQUEST, "Invalid Origin header").into_response();
+        }
+    }
+
     ws.on_upgrade(|socket| handle_socket(socket, state))
+        .into_response()
 }
 
 use crate::soloist::models::SoloistCommand;
@@ -77,11 +101,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<SharedState>) {
                 if let Some(dto) = update_status.update_available {
                     let now_ms = Utc::now().timestamp_millis();
                     let settings = state.settings.read().await;
+                    let is_dismissed =
+                        settings.dismissed_update_version.as_deref() == Some(&dto.latest_version);
                     let is_snoozed = !dto.is_critical_security_update
-                        && settings
-                            .snoozed_update_until
-                            .map(|s| s > now_ms)
-                            .unwrap_or(false);
+                        && (is_dismissed
+                            || settings
+                                .snoozed_update_until
+                                .map(|s| s > now_ms)
+                                .unwrap_or(false));
                     if !is_snoozed
                         && (settings.update_mode != "disabled" || dto.is_critical_security_update)
                     {
@@ -97,6 +124,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SharedState>) {
     }
 
     // Task to send messages (both direct replies and broadcasts) down to this client
+    let state_send = Arc::clone(&state);
     let mut send_task = tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -116,7 +144,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<SharedState>) {
                                 }
                             }
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            let current = state_send.current_state.read().await;
+                            let snapshot_msg = ServerMessage::State(Box::new(current.clone()));
+                            if let Ok(text) = serde_json::to_string(&snapshot_msg) {
+                                if sender.send(Message::Text(text.into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }

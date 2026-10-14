@@ -192,7 +192,7 @@ function OpenNowBar(skipSaving: boolean = false) {
     QueueForceScroll();
   }, 10);
 
-  if (Fullscreen.IsOpen || true) {
+  if (Fullscreen.IsOpen) {
     const MediaBox = PageContainer?.querySelector(
       ".ContentBox .NowBar .Header .MediaBox .MediaContent"
     );

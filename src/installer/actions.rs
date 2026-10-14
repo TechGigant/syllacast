@@ -129,7 +129,8 @@ pub fn install_or_update(config: &InstallConfig) -> Result<Vec<String>, String> 
     let service_content = format!(
         "[Unit]\n\
          Description=Syllacast Network-Synchronized Spotify Lyrics Server\n\
-         After=network.target\n\n\
+         After=network.target network-online.target\n\
+         Wants=network-online.target\n\n\
          [Service]\n\
          Type=simple\n\
          User={}\n\
@@ -138,7 +139,8 @@ pub fn install_or_update(config: &InstallConfig) -> Result<Vec<String>, String> 
          EnvironmentFile=/opt/syllacast/.env\n\
          ExecStart=/opt/syllacast/syllacast\n\
          Restart=always\n\
-         RestartSec=3\n\n\
+         RestartSec=3\n\
+         NoNewPrivileges=true\n\n\
          [Install]\n\
          WantedBy=multi-user.target\n",
         config.service_user, config.service_group
@@ -177,18 +179,22 @@ pub fn install_or_update(config: &InstallConfig) -> Result<Vec<String>, String> 
     Ok(log)
 }
 
-fn format_env_file(config: &InstallConfig) -> String {
-    let soloist_line = if !config.soloist_data_dir.as_os_str().is_empty() {
-        format!(
-            "SOLOIST_DATA_DIR={}\n",
-            config.soloist_data_dir.to_string_lossy()
-        )
+pub fn format_env_file(config: &InstallConfig) -> String {
+    let clean_data_dir = config
+        .soloist_data_dir
+        .to_string_lossy()
+        .replace(['\r', '\n'], "");
+    let clean_key = config.spicy_key.replace(['\r', '\n'], "");
+    let clean_bind = config.bind.replace(['\r', '\n'], "");
+
+    let soloist_line = if !clean_data_dir.is_empty() {
+        format!("SOLOIST_DATA_DIR={}\n", clean_data_dir)
     } else {
         "# SOLOIST_DATA_DIR=\n".to_string()
     };
 
-    let spicy_line = if !config.spicy_key.is_empty() {
-        format!("SPICY_LYRICS_SECRET_KEY={}\n", config.spicy_key)
+    let spicy_line = if !clean_key.is_empty() {
+        format!("SPICY_LYRICS_SECRET_KEY={}\n", clean_key)
     } else {
         "# SPICY_LYRICS_SECRET_KEY=\n".to_string()
     };
@@ -199,7 +205,7 @@ fn format_env_file(config: &InstallConfig) -> String {
          {}\
          SYLLACAST_PORT={}\n\
          SYLLACAST_BIND={}\n",
-        spicy_line, soloist_line, config.port, config.bind
+        spicy_line, soloist_line, config.port, clean_bind
     )
 }
 
@@ -353,7 +359,7 @@ pub async fn check_and_install_github_release() -> Result<Vec<String>, String> {
         current_ver
     ));
     let manifest = client
-        .check_for_update(current_ver)
+        .check_for_update(current_ver, "stable")
         .await
         .map_err(|e| format!("Update check failed: {}", e))?;
 

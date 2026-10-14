@@ -33,15 +33,22 @@ export function CleanUpIsByCommunity() {
   madeTippys.clear();
 }
 
-function openProfile(userId: string | undefined) {
-  if (!userId) return;
-  const url = `https://spicylyrics.org/uid/${encodeURIComponent(userId)}`;
-  globalThis.open?.(url, "_blank", "noopener,noreferrer");
+function openProfile(targetUrl: string | undefined) {
+  if (!targetUrl) return;
+  try {
+    const parsed = new URL(targetUrl, window.location.href);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      globalThis.open?.(parsed.href, "_blank", "noopener,noreferrer");
+    }
+  } catch {
+    // ignore malformed URLs
+  }
 }
 
 export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): void {
-  if (!data.source || !LyricsContainer) return;
-  if (data.source !== "spl") return;
+  if (!data?.source || !LyricsContainer) return;
+  const src = (data.source || "").toLowerCase().trim();
+  if (src !== "spl" && src !== "spicy_lyrics" && src !== "spicylyrics") return;
 
   // Clean up any previous listeners before adding new ones
   if (isByCommunityAbortController) {
@@ -69,6 +76,10 @@ export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): voi
     data.UploadAttribution?.Maker?.avatar ?? data.TTMLUploadMetadata?.Maker?.avatar;
   const makerId =
     data.UploadAttribution?.Maker?.id ?? data.TTMLUploadMetadata?.Maker?.id;
+  const makerUrl =
+    data.UploadAttribution?.Maker?.url ??
+    data.TTMLUploadMetadata?.Maker?.url ??
+    (makerId ? `https://spicylyrics.org/uid/${encodeURIComponent(makerId)}` : undefined);
 
   const uploaderUsername =
     data.UploadAttribution?.Uploader?.username ?? data.TTMLUploadMetadata?.Uploader?.username;
@@ -76,6 +87,10 @@ export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): voi
     data.UploadAttribution?.Uploader?.avatar ?? data.TTMLUploadMetadata?.Uploader?.avatar;
   const uploaderId =
     data.UploadAttribution?.Uploader?.id ?? data.TTMLUploadMetadata?.Uploader?.id;
+  const uploaderUrl =
+    data.UploadAttribution?.Uploader?.url ??
+    data.TTMLUploadMetadata?.Uploader?.url ??
+    (uploaderId ? `https://spicylyrics.org/uid/${encodeURIComponent(uploaderId)}` : undefined);
 
   // Don't render empty community section if no creator or uploader is known
   if (!makerUsername && !uploaderUsername) return;
@@ -144,20 +159,21 @@ export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): voi
   }
   LyricsContainer.appendChild(songInfoElement);
 
-  const uploaderSpan = songInfoElement.querySelector(".Uploader .song-info-profile-section");
-  if (uploaderSpan && uploaderId) {
+  const uploaderSpan = songInfoElement.querySelector(".Uploader .song-info-profile-section") as HTMLElement | null;
+  if (uploaderSpan && uploaderUrl) {
+    uploaderSpan.style.cursor = "pointer";
     if (!IsPIP) {
       madeTippys.add(
         createTooltip(uploaderSpan, {
           ...Spicetify.TippyProps,
-          content: `View TTML Profile`,
+          content: `View Profile`,
         })
       );
     }
     uploaderSpan.addEventListener(
       "click",
       () => {
-        openProfile(uploaderId);
+        openProfile(uploaderUrl);
         if (IsPIP) {
           globalThis.focus();
         }
@@ -166,20 +182,21 @@ export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): voi
     );
   }
 
-  const makerSpan = songInfoElement.querySelector(".Maker .song-info-profile-section");
-  if (makerSpan && makerId) {
+  const makerSpan = songInfoElement.querySelector(".Maker .song-info-profile-section") as HTMLElement | null;
+  if (makerSpan && makerUrl) {
+    makerSpan.style.cursor = "pointer";
     if (!IsPIP) {
       madeTippys.add(
         createTooltip(makerSpan, {
           ...Spicetify.TippyProps,
-          content: `View TTML Profile`,
+          content: `View Profile`,
         })
       );
     }
     makerSpan.addEventListener(
       "click",
       () => {
-        openProfile(makerId);
+        openProfile(makerUrl);
         if (IsPIP) {
           globalThis.focus();
         }

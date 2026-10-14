@@ -130,10 +130,10 @@ class _HTMLGenericModal extends HTMLElement {
 		this._currentModalId = null;
 		this.innerHTML = `
 <div class="sl-modal-overlay sl-modal-overlay-animated" style="z-index: 100;">
-	<div class="sl-modal" tabindex="-1" role="dialog" aria-label="${title}" aria-modal="true">
+	<div class="sl-modal" tabindex="-1" role="dialog" aria-modal="true">
 		<div class="${isLarge ? "sl-modal-container-large" : "sl-modal-container"}">
 			<div class="sl-modal-header">
-				<h1 class="sl-modal-title" as="h1">${title}</h1>
+				<h1 class="sl-modal-title" as="h1"></h1>
 				${closeBtn ? '<button aria-label="Close" class="sl-modal-close-btn"><svg width="18" height="18" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><title>Close</title><path d="M31.098 29.794L16.955 15.65 31.097 1.51 29.683.093 15.54 14.237 1.4.094-.016 1.508 14.126 15.65-.016 29.795l1.414 1.414L15.54 17.065l14.144 14.143" fill="currentColor" fill-rule="evenodd"></path></svg></button>' : ""}
 			</div>
 			<div class="sl-modal-main-section">
@@ -142,6 +142,15 @@ class _HTMLGenericModal extends HTMLElement {
 		</div>
 	</div>
 </div>`;
+
+		const modalEl = this.querySelector(".sl-modal");
+		if (modalEl && typeof title === "string") {
+			modalEl.setAttribute("aria-label", title);
+		}
+		const titleEl = this.querySelector(".sl-modal-title");
+		if (titleEl && typeof title === "string") {
+			titleEl.textContent = title;
+		}
 
 		const closeButton = this.querySelector("button");
 		if (closeButton) {

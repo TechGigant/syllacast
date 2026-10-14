@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Syllacast - Display Settings</title>
-    <link rel="stylesheet" href="https://fonts.spikerko.org/spicy-lyrics/source.css" />
+    <title>Syllacast - Display Settings (Unofficial Port of Spicy Lyrics)</title>
+    <link rel="stylesheet" href="/src/fonts.css" />
     <style>
       :root {
         --bg-color: #0d0d0f;
@@ -25,7 +25,7 @@
       body {
         background-color: var(--bg-color);
         color: var(--text);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         padding: 24px 16px;
         min-height: 100vh;
         display: flex;
@@ -269,6 +269,7 @@
         <div>
           <a href="/" class="btn-back">← Back to Lyrics Screen</a>
           <h1 style="margin-top: 4px;">Syllacast Display Control</h1>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Unofficial port of Spicy Lyrics • Standalone display control</p>
         </div>
         <span class="badge" id="save-badge">Live Synced</span>
       </header>
@@ -344,28 +345,6 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="up_next_enabled" />
-            <span class="slider-toggle"></span>
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">Bottom-Left Lyrics Source</span>
-            <span class="setting-desc">Shows "Lyrics provided by..." attribution at the bottom-left of the screen.</span>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="lyrics_source_enabled" />
-            <span class="slider-toggle"></span>
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">Bottom-Right Source Code Link</span>
-            <span class="setting-desc">Shows the Syllacast AGPL-3.0 GitHub repository link at the bottom-right of the screen.</span>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="source_link_enabled" />
             <span class="slider-toggle"></span>
           </label>
         </div>
@@ -506,8 +485,18 @@
     </div>
 
     <script>
-      let currentSettings = {};
+      let currentSettings = null;
       const badge = document.getElementById("save-badge");
+
+      function setFormDisabled(disabled) {
+        document.querySelectorAll("input, select, button.btn-action").forEach((el) => {
+          if (!el.classList.contains("btn-back")) {
+            el.disabled = disabled;
+          }
+        });
+      }
+
+      setFormDisabled(true);
 
       async function fetchSettings() {
         try {
@@ -515,10 +504,12 @@
           if (!res.ok) throw new Error("HTTP error " + res.status);
           currentSettings = await res.json();
           renderForm(currentSettings);
+          setFormDisabled(false);
         } catch (e) {
           console.error("Failed to fetch settings:", e);
           badge.textContent = "Offline";
           badge.style.color = "#e74c3c";
+          setFormDisabled(true);
         }
       }
 
@@ -529,8 +520,6 @@
         document.getElementById("nowbar_side").value = settings.nowbar_side || "left";
         document.getElementById("clock_enabled").checked = settings.clock_enabled !== false;
         document.getElementById("up_next_enabled").checked = settings.up_next_enabled !== false;
-        document.getElementById("lyrics_source_enabled").checked = settings.lyrics_source_enabled !== false;
-        document.getElementById("source_link_enabled").checked = settings.source_link_enabled !== false;
         document.getElementById("calibration_offset_ms").value = settings.calibration_offset_ms || 0;
         document.getElementById("calib-val").textContent = `${settings.calibration_offset_ms || 0} ms`;
         document.getElementById("dynamic_bg_mode").value = settings.dynamic_bg_mode || "dynamic";
@@ -540,18 +529,19 @@
       }
 
       async function saveSettings() {
+        if (!currentSettings) return;
+
         badge.textContent = "Saving...";
         badge.style.color = "#f39c12";
 
         const updated = {
+          ...currentSettings,
           show_controls_buttons: document.getElementById("show_controls_buttons").checked,
           startup_mode: document.getElementById("startup_mode").value,
           nowbar_open: document.getElementById("nowbar_open").checked,
           nowbar_side: document.getElementById("nowbar_side").value,
           clock_enabled: document.getElementById("clock_enabled").checked,
           up_next_enabled: document.getElementById("up_next_enabled").checked,
-          lyrics_source_enabled: document.getElementById("lyrics_source_enabled").checked,
-          source_link_enabled: document.getElementById("source_link_enabled").checked,
           calibration_offset_ms: parseInt(document.getElementById("calibration_offset_ms").value, 10),
           dynamic_bg_mode: document.getElementById("dynamic_bg_mode").value,
           update_mode: document.getElementById("update_mode").value,

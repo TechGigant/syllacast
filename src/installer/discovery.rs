@@ -42,14 +42,34 @@ pub struct ExistingSyllacast {
 pub fn is_root() -> bool {
     #[cfg(unix)]
     {
-        // Try reading /proc/self/status or calling id -u
+        // 1. Try reading /proc/self/status directly (fast, no subprocess)
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            for line in status.lines() {
+                if line.starts_with("Uid:") {
+                    // format: Uid:\t<real>\t<effective>\t<saved>\t<fs>
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 3 {
+                        return parts[1] == "0" || parts[2] == "0";
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback to `id -u` command
         if let Ok(output) = Command::new("id").arg("-u").output() {
             if let Ok(uid_str) = std::str::from_utf8(&output.stdout) {
                 return uid_str.trim() == "0";
             }
         }
+
+        // Fail-closed default on Unix if UID cannot be determined
+        false
     }
-    true
+    #[cfg(not(unix))]
+    {
+        // Windows/non-unix does not have Unix root privileges
+        false
+    }
 }
 
 /// Detects the user who invoked sudo (if any), otherwise falls back to USER env var or "syllacast".

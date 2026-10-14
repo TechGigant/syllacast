@@ -66,10 +66,90 @@ pub fn is_newer_version(candidate: &str, current: &str) -> bool {
     false
 }
 
+/// Parses a GitHub API release JSON object into a `ReleaseManifest`.
+pub fn parse_release_value(release_json: &serde_json::Value) -> Option<ReleaseManifest> {
+    let tag_name = release_json
+        .get("tag_name")
+        .and_then(|v| v.as_str())?
+        .to_string();
+    let version = tag_name.trim_start_matches('v').to_string();
+
+    let published_at = release_json
+        .get("published_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let html_url = release_json
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let body = release_json
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    let is_critical_security = body.to_lowercase().contains("[security]")
+        || body.to_lowercase().contains("critical security")
+        || tag_name.to_lowercase().contains("security");
+
+    let mut targets = HashMap::new();
+    if let Some(assets) = release_json.get("assets").and_then(|v| v.as_array()) {
+        for asset in assets {
+            let name = asset
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let download_url = asset
+                .get("browser_download_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let size = asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+
+            for &arch in &[
+                "x86_64-unknown-linux-musl",
+                "aarch64-unknown-linux-musl",
+                "armv7-unknown-linux-musleabihf",
+            ] {
+                if name.contains(arch) && name.ends_with(".tar.gz") {
+                    targets.insert(
+                        arch.to_string(),
+                        TargetArchiveInfo {
+                            archive_name: name.to_string(),
+                            download_url: download_url.clone(),
+                            sha256: String::new(), // will check against SHA256SUMS.txt if empty
+                            size,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    Some(ReleaseManifest {
+        version,
+        tag_name,
+        published_at,
+        is_critical_security_update: is_critical_security,
+        html_url: html_url.clone(),
+        release_notes: Some(body),
+        release_notes_url: Some(html_url),
+        targets,
+    })
+}
+
 /// Client for checking and querying Syllacast releases on GitHub.
 pub struct UpdateClient {
     http: reqwest::Client,
     repo: String,
+}
+
+impl Default for UpdateClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UpdateClient {
@@ -87,17 +167,81 @@ impl UpdateClient {
     }
 
     /// Checks for a newer release on GitHub.
-    /// First queries the rate-limit-free release-manifest.json, falling back to GitHub API.
+    /// When `channel == "prerelease"`, queries all non-draft releases from the GitHub API.
+    /// Otherwise queries the rate-limit-free release-manifest.json, falling back to `/releases/latest`.
     pub async fn check_for_update(
         &self,
         current_version: &str,
+        channel: &str,
     ) -> Result<Option<ReleaseManifest>, String> {
         info!(
-            "Checking for updates against repo {} (current: v{})",
-            self.repo, current_version
+            "Checking for updates against repo {} (channel: {}, current: v{})",
+            self.repo, channel, current_version
         );
 
-        // 1. Attempt downloading static release-manifest.json from GitHub Releases asset CDN
+        // 1. Prerelease channel: query the GitHub Releases list to find the newest non-draft release
+        if channel == "prerelease" {
+            let api_url = format!("https://api.github.com/repos/{}/releases", self.repo);
+            let resp = self
+                .http
+                .get(&api_url)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to reach GitHub API for prereleases: {}", e))?;
+
+            if !resp.status().is_success() {
+                return Err(format!("GitHub API returned HTTP {}", resp.status()));
+            }
+
+            let releases = resp
+                .json::<Vec<serde_json::Value>>()
+                .await
+                .map_err(|e| format!("Failed to parse GitHub releases list: {}", e))?;
+
+            for rel in releases {
+                // Ignore draft releases
+                if rel.get("draft").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    continue;
+                }
+
+                // Check if this release bundles a release-manifest.json asset
+                if let Some(assets) = rel.get("assets").and_then(|v| v.as_array()) {
+                    if let Some(manifest_asset) = assets.iter().find(|a| {
+                        a.get("name").and_then(|n| n.as_str()) == Some("release-manifest.json")
+                    }) {
+                        if let Some(dl_url) = manifest_asset
+                            .get("browser_download_url")
+                            .and_then(|u| u.as_str())
+                        {
+                            if let Ok(m_resp) = self.http.get(dl_url).send().await {
+                                if m_resp.status().is_success() {
+                                    if let Ok(manifest) = m_resp.json::<ReleaseManifest>().await {
+                                        if is_newer_version(&manifest.version, current_version) {
+                                            return Ok(Some(manifest));
+                                        } else {
+                                            return Ok(None);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback to constructing manifest from the release JSON
+                if let Some(manifest) = parse_release_value(&rel) {
+                    if is_newer_version(&manifest.version, current_version) {
+                        return Ok(Some(manifest));
+                    } else {
+                        return Ok(None);
+                    }
+                }
+            }
+
+            return Ok(None);
+        }
+
+        // 2. Stable channel: attempt downloading static release-manifest.json from GitHub Releases asset CDN
         let manifest_url = format!(
             "https://github.com/{}/releases/latest/download/release-manifest.json",
             self.repo
@@ -129,7 +273,7 @@ impl UpdateClient {
             }
         }
 
-        // 2. Fallback to standard GitHub Releases API
+        // 3. Fallback to standard GitHub Releases API (/releases/latest)
         let api_url = format!("https://api.github.com/repos/{}/releases/latest", self.repo);
         let resp = self
             .http
@@ -146,79 +290,13 @@ impl UpdateClient {
             .json::<serde_json::Value>()
             .await
             .map_err(|e| format!("Failed to parse GitHub API response: {}", e))?;
-        let tag_name = release_json
-            .get("tag_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        let version = tag_name.trim_start_matches('v').to_string();
 
-        if !is_newer_version(&version, current_version) {
-            return Ok(None);
-        }
-
-        let published_at = release_json
-            .get("published_at")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let html_url = release_json
-            .get("html_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let body = release_json
-            .get("body")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-
-        let is_critical_security = body.to_lowercase().contains("[security]")
-            || body.to_lowercase().contains("critical security")
-            || tag_name.to_lowercase().contains("security");
-
-        let mut targets = HashMap::new();
-        if let Some(assets) = release_json.get("assets").and_then(|v| v.as_array()) {
-            for asset in assets {
-                let name = asset
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let download_url = asset
-                    .get("browser_download_url")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let size = asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
-
-                for &arch in &[
-                    "x86_64-unknown-linux-musl",
-                    "aarch64-unknown-linux-musl",
-                    "armv7-unknown-linux-musleabihf",
-                ] {
-                    if name.contains(arch) && name.ends_with(".tar.gz") {
-                        targets.insert(
-                            arch.to_string(),
-                            TargetArchiveInfo {
-                                archive_name: name.to_string(),
-                                download_url: download_url.clone(),
-                                sha256: String::new(), // will check against SHA256SUMS.txt if empty
-                                size,
-                            },
-                        );
-                    }
-                }
+        if let Some(manifest) = parse_release_value(&release_json) {
+            if is_newer_version(&manifest.version, current_version) {
+                return Ok(Some(manifest));
             }
         }
 
-        Ok(Some(ReleaseManifest {
-            version,
-            tag_name: tag_name.to_string(),
-            published_at,
-            is_critical_security_update: is_critical_security,
-            html_url: html_url.clone(),
-            release_notes: Some(body),
-            release_notes_url: Some(html_url),
-            targets,
-        }))
+        Ok(None)
     }
 }

@@ -422,7 +422,7 @@
   .line.bg-line
   .letterGroup
   .letter {
-  font-family: SpicyLyrics, sans-serif;
+  font-family: Inter, SpicyLyrics, sans-serif;
 }
 
 /* @keyframes MusicalLineScaleLoop {
@@ -709,7 +709,7 @@
     opacity 0.14s !important;
   position: relative;
   transform-origin: center center !important;
-  font-family: SpicyLyrics !important;
+  font-family: Inter, SpicyLyrics !important;
   z-index: -1;
   opacity: 0;
   /* Collapsed to zero height when inactive so the virtualizer measures 0 and
@@ -723,7 +723,7 @@
 
 #SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line.musical-line .dotGroup {
   transition: scale 0.3s !important;
-  font-family: SpicyLyrics !important;
+  font-family: Inter, SpicyLyrics !important;
   transform-origin: center center;
   scale: 1;
 }

@@ -7,11 +7,11 @@ default-members = ["."]
 
 [package]
 name = "syllacast"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2021"
-authors = ["TechGigant", "Spikerko (Spicy Lyrics)"]
+authors = ["TechGigant"]
 license = "AGPL-3.0-or-later"
-description = "Network-synchronized Spotify lyrics display server for Spotify Soloist and standalone displays"
+description = "Unofficial port of Spicy Lyrics — network-synchronized Spotify lyrics display server for Spotify Soloist and standalone displays"
 repository = "https://github.com/TechGigant/syllacast"
 homepage = "https://github.com/TechGigant/syllacast"
 readme = "README.md"
