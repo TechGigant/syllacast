@@ -575,6 +575,44 @@ async fn test_sync_lyrics_for_track_deduplication() {
     assert_eq!(current.lyrics_status, LyricsStatus::Idle);
     assert!(current.lyrics.is_none());
 
+    // Case 3: Track changes from Song A (with lyrics) to Song B -> old lyrics are discarded, new lyrics fetched/cached
+    let fake_lyrics = crate::spicy::models::LyricsEnvelope {
+        Body: crate::spicy::models::LyricsBody::Static {
+            id: "test_track_id".to_string(),
+            source: "spicy_lyrics".to_string(),
+            SongWriters: None,
+            UploadAttribution: None,
+            Lines: Vec::new(),
+            HasTransliterations: None,
+            HasTranslations: None,
+        },
+        Status: 200,
+        Type: "Static".to_string(),
+    };
+    current.lyrics = Some(fake_lyrics);
+    current.lyrics_status = LyricsStatus::Found;
+    current.track = Some(TrackMetadata {
+        id: "new_track_id".to_string(),
+        uri: "spotify:track:new_track_id".to_string(),
+        title: "New Track".to_string(),
+        artist: "New Artist".to_string(),
+        album: "New Album".to_string(),
+        cover_url: None,
+        duration_ms: 200_000,
+    });
+
+    sync_lyrics_for_track(
+        &mut current,
+        Some("new_track_id".to_string()),
+        &spicy_client,
+        &shared_state,
+        &tx,
+    );
+
+    // Old lyrics for test_track_id must NOT be kept for new_track_id!
+    assert!(current.lyrics.is_none());
+    assert_eq!(current.lyrics_status, LyricsStatus::Loading);
+
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
 

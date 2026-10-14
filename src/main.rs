@@ -273,6 +273,17 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                     if track_changed {
                         current.track = track;
+                        current.lyrics = None;
+                        current.lyrics_status = LyricsStatus::Idle;
+                        sync_lyrics_for_track(
+                            &mut current,
+                            track_id,
+                            &spicy_ref,
+                            &state_ref,
+                            &client_tx_ref,
+                        );
+                    } else if current.track.is_some() && current.lyrics_status == LyricsStatus::Idle
+                    {
                         sync_lyrics_for_track(
                             &mut current,
                             track_id,
@@ -308,6 +319,8 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                     if track_changed {
                         current.track = track;
+                        current.lyrics = None;
+                        current.lyrics_status = LyricsStatus::Idle;
                         // Reset timeline anchor immediately to 0 ms at current server epoch
                         current.position = Some(PositionAnchor {
                             position_ms: 0,
@@ -417,6 +430,15 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Helper to check if currently loaded lyrics match the given track ID.
+pub fn lyrics_match_track(lyrics: &Option<spicy::models::LyricsEnvelope>, track_id: &str) -> bool {
+    lyrics.as_ref().is_some_and(|l| match &l.Body {
+        spicy::models::LyricsBody::Syllable { id, .. }
+        | spicy::models::LyricsBody::Line { id, .. }
+        | spicy::models::LyricsBody::Static { id, .. } => id == track_id,
+    })
+}
+
 /// Helper to synchronize lyrics for a track, checking cache and deduplicating in-flight requests.
 pub fn sync_lyrics_for_track(
     current: &mut AppStateSnapshot,
@@ -439,7 +461,8 @@ pub fn sync_lyrics_for_track(
         if current.lyrics_status == LyricsStatus::Loading {
             return;
         }
-        if current.lyrics.is_some() && current.lyrics_status == LyricsStatus::Found {
+        if current.lyrics_status == LyricsStatus::Found && lyrics_match_track(&current.lyrics, &id)
+        {
             return;
         }
     }
