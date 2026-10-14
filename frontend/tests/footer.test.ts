@@ -102,9 +102,11 @@ describe("Kiosk Footer Controller", () => {
     const html = footer.element.innerHTML;
     expect(html).toContain("Lyrics provided by");
     expect(html).toContain("Spicy Lyrics");
+    expect(html).toContain("Uploaded by");
     expect(html).toContain('href="https://spicylyrics.org/uid/123"');
     expect(html).toContain("@spikerko");
     expect(html).toContain("https://spicylyrics.org/uid/123");
+    expect(html).toContain("Made by");
     expect(html).toContain('href="https://spicylyrics.org/uid/456"');
     expect(html).toContain("@gc");
     expect(html).toContain("https://spicylyrics.org/uid/456");
@@ -120,7 +122,7 @@ describe("Kiosk Footer Controller", () => {
     );
 
     const html = footer.element.innerHTML;
-    expect(html).toContain("Synced & made by");
+    expect(html).toContain("Made & uploaded by");
     expect(html).toContain("@solo_sync");
     expect(html).toContain("https://spicylyrics.org/uid/999");
   });

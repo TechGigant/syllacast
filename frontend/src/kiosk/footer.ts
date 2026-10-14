@@ -58,7 +58,7 @@ export function createKioskFooter(): KioskFooterController {
     right: 20px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
     z-index: 990;
     pointer-events: none;
     font-size: 0.75rem;
@@ -70,8 +70,8 @@ export function createKioskFooter(): KioskFooterController {
   `;
 
   footerEl.innerHTML = `
-    <div class="KioskFooterLeft" style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
-    <div class="KioskFooterRight" style="display: flex; align-items: center; gap: 6px;">
+    <div class="KioskFooterLeft" style="width: 45vw; max-width: calc(100vw - 320px); min-width: 0; box-sizing: border-box; display: block; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.35;"></div>
+    <div class="KioskFooterRight" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
       <a href="https://github.com/TechGigant/syllacast" target="_blank" rel="noopener noreferrer" style="pointer-events: auto; color: inherit; text-decoration: underline; opacity: 0.85;">
         https://github.com/TechGigant/syllacast
       </a>
@@ -110,13 +110,13 @@ export function createKioskFooter(): KioskFooterController {
 
     let communityCredits = "";
     if (uploaderObj?.username && makerObj?.username && uploaderObj.username === makerObj.username) {
-      communityCredits = renderContributorSpan("Synced & made by", uploaderObj);
+      communityCredits = renderContributorSpan("Made & uploaded by", uploaderObj);
     } else {
-      if (uploaderObj?.username) {
-        communityCredits += renderContributorSpan("Synced by", uploaderObj);
-      }
       if (makerObj?.username) {
         communityCredits += renderContributorSpan("Made by", makerObj);
+      }
+      if (uploaderObj?.username) {
+        communityCredits += renderContributorSpan("Uploaded by", uploaderObj);
       }
     }
 
@@ -135,10 +135,12 @@ export function createKioskFooter(): KioskFooterController {
     }
 
     leftEl.innerHTML = `
-      <span class="KioskLyricsProviderText">Lyrics provided by ${providerHtml}</span>
-      ${communityCredits}
+      <div class="KioskLyricsContainer" style="width: 100%; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.35;">
+        <span class="KioskLyricsProviderText">Lyrics provided by ${providerHtml}</span>
+        ${communityCredits}
+      </div>
     `;
-    leftEl.style.display = "flex";
+    leftEl.style.display = "block";
   }
 
   return {

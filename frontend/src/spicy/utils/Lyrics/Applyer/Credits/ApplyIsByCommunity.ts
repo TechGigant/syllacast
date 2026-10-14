@@ -95,11 +95,10 @@ export function ApplyIsByCommunity(data: any, LyricsContainer: HTMLElement): voi
   // Don't render empty community section if no creator or uploader is known
   if (!makerUsername && !uploaderUsername) return;
 
-  // Static copy – safe to set as text
   const providedByCommunitySpan = document.createElement("span");
   providedByCommunitySpan.style.opacity = "0.5";
   providedByCommunitySpan.textContent =
-    "These lyrics have been provided by our community";
+    "These lyrics have been provided by the Spicy Lyrics community";
   songInfoElement.appendChild(providedByCommunitySpan);
 
   // Helper for creating a profile section (Maker / Uploader) safely
