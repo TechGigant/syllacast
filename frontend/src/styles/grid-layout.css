@@ -1,0 +1,375 @@
+/*
+ * Syllacast - Standalone Spotify Lyrics Kiosk
+ * Copyright (C) 2026 TechGigant
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/* ==========================================================================
+   24x12 CSS Grid Engine & Spicy Lyrics Layout Overrides
+   ========================================================================== */
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox {
+  display: grid !important;
+  grid-template-columns: repeat(24, minmax(0, 1fr)) !important;
+  grid-template-rows: repeat(12, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  padding: 16px 20px 38px 20px !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Keep Kawarp dynamic WebGL background canvas out of CSS Grid item flow */
+#SpicyLyricsPage.GridLayoutActive .ContentBox > .kawarp-container,
+#SpicyLyricsPage.GridLayoutActive .ContentBox > canvas,
+#SpicyLyricsPage.GridLayoutActive .ContentBox > .kawarp-canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+/* Keep Spicy Lyrics ViewControls out of CSS Grid flow ONLY when it is a direct child of .ContentBox (non-Fullscreen mode).
+   In Fullscreen/Cinema mode, PageView moves .ViewControls inside .NowBar .Header .MediaBox .MediaContent, where it must stay inside the album art! */
+#SpicyLyricsPage.GridLayoutActive .ContentBox > .ViewControls {
+  position: absolute !important;
+  top: 24px !important;
+  right: 28px !important;
+  width: auto !important;
+  height: 38px !important;
+  z-index: 900 !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+/* Base styling for all widgets placed on the 24x12 grid */
+.KioskGridWidget {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  container-type: size !important;
+  z-index: 2;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.KioskGridWidget.KioskWidget--hidden {
+  display: none !important;
+}
+
+/* Universal dark frosted liquid glass card chrome */
+.KioskGridWidget--glass {
+  background: rgba(16, 18, 26, 0.42) !important;
+  backdrop-filter: blur(22px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+}
+
+/* ==========================================================================
+   NowBar Component Adaptation
+   ========================================================================== */
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding-top: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  container-type: size !important;
+  z-index: 2 !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .CenteredView {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+/* Scale NowBar Header and square MediaBox concentrically inside the NowBar grid cell
+   so MediaBox, Timeline, and Metadata share the exact same width and alignment.
+   Using container-type: inline-size on .Header ensures cqw inside .MediaBox, .Timeline,
+   and .Metadata resolves against .Header's width (and never against .Metadata's short height). */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .Header {
+  --header-size: min(88cqw, 70cqh);
+  --default-font-size: clamp(0.85rem, 3.2cqw, 2.4rem);
+  width: var(--header-size) !important;
+  max-width: 100% !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  container-type: inline-size !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .Header .MediaBox {
+  width: 100cqw !important;
+  height: 100cqw !important;
+  max-width: 100% !important;
+  container-type: size !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .Header > .Timeline {
+  width: 100% !important;
+  padding: 4.5cqw 1cqw 3cqw !important;
+  gap: 0.6cqw !important;
+  box-sizing: border-box !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .Header .Metadata {
+  width: 100% !important;
+  height: 13cqh !important;
+}
+
+/* Center NowBar in the middle of the screen when no lyrics are available
+   (unless disabled in NowBar widget settings or while in Edit Mode) */
+#SpicyLyricsPage.GridLayoutActive:not(.EditModeActive) .ContentBox.LyricsHidden .NowBar.KioskGridWidget:not(.NowBar--keep-position) {
+  grid-column: 1 / -1 !important;
+  width: calc((100% - 23 * 12px) * var(--widget-cols, 9) / 24 + (var(--widget-cols, 9) - 1) * 12px) !important;
+  justify-self: center !important;
+}
+
+/* ==========================================================================
+   LyricsContainer Component Adaptation
+   ========================================================================== */
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  container-type: size !important;
+  z-index: 2 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Hide LyricsContainer when NowBar centers on no-lyrics tracks (unless NowBar--keep-position is set or Edit Mode is active) */
+#SpicyLyricsPage.GridLayoutActive:not(.EditModeActive) .ContentBox.LyricsHidden:not(:has(.NowBar.NowBar--keep-position)) .LyricsContainer.KioskGridWidget,
+#SpicyLyricsPage.GridLayoutActive:not(.EditModeActive) .ContentBox:not(:has(.NowBar.NowBar--keep-position)) .LyricsContainer.KioskGridWidget.Hidden {
+  display: none !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 1 auto !important;
+}
+
+/* Prevent .LyricsContent from scrolling its .simplebar-wrapper into the empty .simplebar-placeholder */
+#SpicyLyricsPage .LyricsContainer .LyricsContent[data-simplebar] {
+  overflow: hidden !important;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .simplebar-placeholder {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Neutralize legacy 48cqw left padding and excessive bottom margin so lyrics occupy the assigned grid cell cleanly */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.Active.LeftSide + .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.Active.RightSide + .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.Active.LeftSide + .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.Active.RightSide + .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines,
+#SpicyLyricsPage.GridLayoutActive.NowBarStatus__Open .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.GridLayoutActive.NowBarStatus__Open .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines,
+#SpicyLyricsPage.GridLayoutActive.NowBarStatus__Closed .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage.GridLayoutActive.NowBarStatus__Closed .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer.HasDuetLines {
+  padding-left: clamp(16px, 3.5cqw, 36px) !important;
+  padding-right: clamp(16px, 3.5cqw, 36px) !important;
+  margin-top: 20cqh !important;
+  margin-bottom: 2cqh !important;
+}
+
+/* ==========================================================================
+   Digital Clock & Up Next Queue Overrides inside CSS Grid
+   ========================================================================== */
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: fit-content !important;
+  min-width: 112px !important;
+  max-width: 100% !important;
+  height: fit-content !important;
+  max-height: 100% !important;
+  font-size: clamp(0.95rem, calc(min(var(--widget-rows, 1) * 1.45vh, var(--widget-cols, 3) * 0.72vw)), 3.2rem) !important;
+  padding: 0.38em 1.05em !important;
+  border-radius: 9999px !important;
+  align-self: start !important;
+  justify-self: start !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  container-type: normal !important;
+  box-sizing: border-box !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskGridWidget--glass {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+  border-radius: 9999px !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget:not(.KioskGridWidget--glass) {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget {
+  --upnext-scale: clamp(1, min(calc(var(--widget-rows, 2) / 2), calc(var(--widget-cols, 6) / 6)), 2.1);
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: fit-content !important;
+  min-width: calc(210px * var(--upnext-scale)) !important;
+  max-width: min(calc(310px * var(--upnext-scale)), 100%) !important;
+  height: fit-content !important;
+  max-height: 100% !important;
+  gap: calc(12px * var(--upnext-scale)) !important;
+  padding: calc(8px * var(--upnext-scale)) calc(14px * var(--upnext-scale)) calc(8px * var(--upnext-scale)) calc(10px * var(--upnext-scale)) !important;
+  border-radius: calc(14px * var(--upnext-scale)) !important;
+  align-self: end !important;
+  justify-self: end !important;
+  container-type: normal !important;
+  box-sizing: border-box !important;
+  transform: none !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget .KioskUpNextThumb {
+  width: calc(44px * var(--upnext-scale)) !important;
+  height: calc(44px * var(--upnext-scale)) !important;
+  border-radius: calc(8px * var(--upnext-scale)) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget .KioskUpNextTitle {
+  font-size: calc(0.85rem * var(--upnext-scale)) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget .KioskUpNextArtist {
+  font-size: calc(0.75rem * var(--upnext-scale)) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget.KioskGridWidget--glass {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
+  border-radius: calc(14px * var(--upnext-scale)) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget:not(.KioskGridWidget--glass) {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Keep Clock and UpNext at their exact fit-content size in Edit Mode while ensuring visibility and floating edit bar */
+#SpicyLyricsPage.GridLayoutActive.EditModeActive .KioskClock.KioskGridWidget,
+#SpicyLyricsPage.GridLayoutActive.EditModeActive .KioskUpNext.KioskGridWidget {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  overflow: visible !important;
+}
+
+/* ==========================================================================
+   Responsive Container-Query Rules for Dynamic Widgets
+   ========================================================================== */
+
+/* Hide Weather 3-day forecast row automatically if widget cell is resized very short */
+@container (max-height: 155px) {
+  .KioskWeatherWidget .WeatherForecastRow {
+    display: none !important;
+  }
+}
+
+/* Hide PlayerControls volume group automatically if widget cell is resized very narrow */
+@container (max-width: 250px) {
+  .KioskPlayerControlsWidget .ControlsVolumeGroup {
+    display: none !important;
+  }
+  .KioskPlayerControlsWidget .ControlsActionRow {
+    justify-content: center !important;
+  }
+}
+
+/* Sleek translucent scrollbar inside Extended Queue widget */
+.KioskQueueWidget .QueueListScroll::-webkit-scrollbar {
+  width: 5px;
+}
+.KioskQueueWidget .QueueListScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.KioskQueueWidget .QueueListScroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+.KioskQueueWidget .QueueListScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* Highest-specificity rule to ensure deleted/hidden singleton widgets stay hidden */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .KioskGridWidget.KioskWidget--hidden,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.KioskWidget--hidden,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget.KioskWidget--hidden,
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskWidget--hidden,
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget.KioskWidget--hidden,
+.KioskGridWidget.KioskWidget--hidden {
+  display: none !important;
+}
+
+

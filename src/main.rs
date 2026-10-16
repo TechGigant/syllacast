@@ -134,6 +134,7 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         track: None,
         position: None,
         queue_upcoming: Vec::new(),
+        queue_history: Vec::new(),
         lyrics: None,
         lyrics_status: LyricsStatus::Idle,
         volume: None,
@@ -273,6 +274,10 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if track_changed {
+                        let snap = &mut *current;
+                        if let Some(prev) = &snap.track {
+                            record_track_history(&mut snap.queue_history, prev);
+                        }
                         current.track = track;
                         current.lyrics = None;
                         current.lyrics_status = LyricsStatus::Idle;
@@ -319,6 +324,10 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     let track_changed = current.track.as_ref().map(|t| &t.id) != track_id.as_ref();
 
                     if track_changed {
+                        let snap = &mut *current;
+                        if let Some(prev) = &snap.track {
+                            record_track_history(&mut snap.queue_history, prev);
+                        }
                         current.track = track;
                         current.lyrics = None;
                         current.lyrics_status = LyricsStatus::Idle;
@@ -581,7 +590,29 @@ fn extract_metadata(entity: &SoloistEntity) -> Option<TrackMetadata> {
     })
 }
 
-fn extract_queue_item(entity: &SoloistEntity) -> Option<QueueItemDto> {
+pub const MAX_QUEUE_HISTORY: usize = 15;
+
+pub fn record_track_history(history: &mut Vec<QueueItemDto>, prev_track: &TrackMetadata) {
+    if prev_track.uri.is_empty() {
+        return;
+    }
+    if history.first().and_then(|item| item.uri.as_deref()) == Some(prev_track.uri.as_str()) {
+        return;
+    }
+    history.insert(
+        0,
+        QueueItemDto {
+            title: prev_track.title.clone(),
+            artist: prev_track.artist.clone(),
+            cover_url: prev_track.cover_url.clone(),
+            uri: Some(prev_track.uri.clone()),
+            duration_ms: Some(prev_track.duration_ms),
+        },
+    );
+    history.truncate(MAX_QUEUE_HISTORY);
+}
+
+pub fn extract_queue_item(entity: &SoloistEntity) -> Option<QueueItemDto> {
     let dec = entity.decorations.as_ref()?;
     let title = dec.identity.as_ref()?.name.clone()?;
 
@@ -612,9 +643,19 @@ fn extract_queue_item(entity: &SoloistEntity) -> Option<QueueItemDto> {
         .and_then(|covers| covers.first())
         .map(|c| c.url.clone());
 
+    let uri = if entity.uri.is_empty() {
+        None
+    } else {
+        Some(entity.uri.clone())
+    };
+
+    let duration_ms = dec.playback.as_ref().and_then(|p| p.duration_ms);
+
     Some(QueueItemDto {
         title,
         artist,
         cover_url,
+        uri,
+        duration_ms,
     })
 }

@@ -274,6 +274,27 @@
         <span class="badge" id="save-badge">Live Synced</span>
       </header>
 
+      <!-- Section 0: Layout & Widget Studio -->
+      <div class="section-card" style="border-color: rgba(56, 189, 248, 0.3); background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(255, 255, 255, 0.04));">
+        <div class="section-title" style="color: #38bdf8;">Layout &amp; Widget Studio</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Active Layout Profile</span>
+            <span class="setting-desc">Switch between saved 24×12 grid layouts (Standard Kiosk, Living Room Hub, Party &amp; Visualizer, Cinema Lyrics, or custom profiles).</span>
+          </div>
+          <select id="active_profile_id"></select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Interactive Grid Editor</span>
+            <span class="setting-desc">Move, resize, add, or configure widgets (Visualizer, Weather, Extended Queue, Custom Iframes, Guest Wi-Fi QR) directly on the canvas.</span>
+          </div>
+          <a href="/customize" class="btn-action" style="background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.45); color: #38bdf8; text-decoration: none; white-space: nowrap;">✨ Open Studio →</a>
+        </div>
+      </div>
+
       <!-- Section 1: UI Buttons & Mode -->
       <div class="section-card">
         <div class="section-title">Screen Controls & Mode</div>
@@ -514,6 +535,20 @@
       }
 
       function renderForm(settings) {
+        const profileSelect = document.getElementById("active_profile_id");
+        if (profileSelect) {
+          const profiles = Array.isArray(settings.layout_profiles) && settings.layout_profiles.length > 0
+            ? settings.layout_profiles
+            : [{ id: "default", name: "Standard Kiosk" }];
+          profileSelect.innerHTML = "";
+          for (const p of profiles) {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            opt.selected = p.id === (settings.active_profile_id || "default");
+            profileSelect.appendChild(opt);
+          }
+        }
         document.getElementById("show_controls_buttons").checked = !!settings.show_controls_buttons;
         document.getElementById("startup_mode").value = settings.startup_mode || "standard";
         document.getElementById("nowbar_open").checked = settings.nowbar_open !== false;
@@ -528,20 +563,78 @@
         document.getElementById("update_channel").value = settings.update_channel || "stable";
       }
 
-      async function saveSettings() {
+      async function saveSettings(event) {
         if (!currentSettings) return;
 
         badge.textContent = "Saving...";
         badge.style.color = "#f39c12";
 
+        const selectedProfileId = document.getElementById("active_profile_id")?.value || currentSettings.active_profile_id || "default";
+        const profiles = Array.isArray(currentSettings.layout_profiles)
+          ? JSON.parse(JSON.stringify(currentSettings.layout_profiles))
+          : [];
+        const activeProfile = profiles.find((p) => p.id === selectedProfileId);
+
+        let nowbarOpen = document.getElementById("nowbar_open").checked;
+        let clockEnabled = document.getElementById("clock_enabled").checked;
+        let upNextEnabled = document.getElementById("up_next_enabled").checked;
+        const nowbarSide = document.getElementById("nowbar_side").value;
+
+        if (activeProfile && Array.isArray(activeProfile.widgets)) {
+          if (event && event.target && event.target.id === "active_profile_id") {
+            // Switching profile updates the legacy checkboxes to match the newly selected profile
+            nowbarOpen = activeProfile.widgets.some((w) => w.widget_type === "nowbar");
+            clockEnabled = activeProfile.widgets.some((w) => w.widget_type === "clock");
+            upNextEnabled = activeProfile.widgets.some((w) => w.widget_type === "up_next");
+          } else {
+            // Toggling checkboxes/NowBar side updates the active profile's widgets
+            const hasClock = activeProfile.widgets.some((w) => w.widget_type === "clock");
+            if (clockEnabled && !hasClock) {
+              activeProfile.widgets.push({ id: "clock-1", widget_type: "clock", x: 2, y: 1, w: 3, h: 1, show_glass: true, config: {} });
+            } else if (!clockEnabled && hasClock) {
+              activeProfile.widgets = activeProfile.widgets.filter((w) => w.widget_type !== "clock");
+            }
+
+            const hasUpNext = activeProfile.widgets.some((w) => w.widget_type === "up_next");
+            if (upNextEnabled && !hasUpNext) {
+              activeProfile.widgets.push({ id: "up_next-1", widget_type: "up_next", x: 18, y: 1, w: 6, h: 2, show_glass: true, config: {} });
+            } else if (!upNextEnabled && hasUpNext) {
+              activeProfile.widgets = activeProfile.widgets.filter((w) => w.widget_type !== "up_next");
+            }
+
+            const hasNowbar = activeProfile.widgets.some((w) => w.widget_type === "nowbar");
+            if (nowbarOpen && !hasNowbar) {
+              activeProfile.widgets.push({ id: "nowbar-1", widget_type: "nowbar", x: nowbarSide === "right" ? 15 : 2, y: 2, w: 9, h: 9, show_glass: false, config: {} });
+            } else if (!nowbarOpen && hasNowbar) {
+              activeProfile.widgets = activeProfile.widgets.filter((w) => w.widget_type !== "nowbar");
+            }
+
+            if (event && event.target && event.target.id === "nowbar_side") {
+              const nw = activeProfile.widgets.find((w) => w.widget_type === "nowbar");
+              const lw = activeProfile.widgets.find((w) => w.widget_type === "lyrics");
+              if (nw && lw) {
+                if (nowbarSide === "right" && nw.x < lw.x) {
+                  lw.x = 2;
+                  nw.x = Math.min(25 - nw.w, lw.x + lw.w);
+                } else if (nowbarSide === "left" && nw.x > lw.x) {
+                  nw.x = 2;
+                  lw.x = Math.min(25 - lw.w, nw.x + nw.w);
+                }
+              }
+            }
+          }
+        }
+
         const updated = {
           ...currentSettings,
+          active_profile_id: selectedProfileId,
+          layout_profiles: profiles,
           show_controls_buttons: document.getElementById("show_controls_buttons").checked,
           startup_mode: document.getElementById("startup_mode").value,
-          nowbar_open: document.getElementById("nowbar_open").checked,
-          nowbar_side: document.getElementById("nowbar_side").value,
-          clock_enabled: document.getElementById("clock_enabled").checked,
-          up_next_enabled: document.getElementById("up_next_enabled").checked,
+          nowbar_open: nowbarOpen,
+          nowbar_side: nowbarSide,
+          clock_enabled: clockEnabled,
+          up_next_enabled: upNextEnabled,
           calibration_offset_ms: parseInt(document.getElementById("calibration_offset_ms").value, 10),
           dynamic_bg_mode: document.getElementById("dynamic_bg_mode").value,
           update_mode: document.getElementById("update_mode").value,
@@ -557,6 +650,7 @@
           });
           if (!res.ok) throw new Error("HTTP error " + res.status);
           currentSettings = await res.json();
+          renderForm(currentSettings);
           badge.textContent = "Saved & Applied!";
           badge.style.color = "#2ecc71";
           setTimeout(() => {

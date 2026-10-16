@@ -32,6 +32,8 @@ export interface QueueItemDto {
   title: string;
   artist: string;
   cover_url?: string;
+  uri?: string;
+  duration_ms?: number;
 }
 
 export interface AppStateSnapshot {
@@ -40,6 +42,7 @@ export interface AppStateSnapshot {
   track?: TrackMetadata;
   position?: PositionAnchor;
   queue_upcoming: QueueItemDto[];
+  queue_history?: QueueItemDto[];
   lyrics?: any;
   lyrics_status?: "idle" | "loading" | "found" | "not_found" | "error" | string;
   volume?: number;

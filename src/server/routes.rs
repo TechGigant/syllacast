@@ -4,7 +4,8 @@
 
 use axum::{
     extract::State,
-    response::{IntoResponse, Redirect},
+    http::{header, StatusCode, Uri},
+    response::{IntoResponse, Redirect, Response},
     routing::get,
     Json, Router,
 };
@@ -43,6 +44,8 @@ pub fn create_routes(state: Arc<SharedState>) -> Router {
             "/settings",
             get(|| async { Redirect::temporary("/settings.html") }),
         )
+        .route("/customize", get(serve_customize_spa))
+        .route("/customize/", get(serve_customize_spa))
         .route("/api/settings", get(get_settings).post(update_settings))
         .route("/api/updates/status", get(get_update_status))
         .route("/api/updates/check", axum::routing::post(check_updates))
@@ -122,4 +125,19 @@ async fn snooze_update(State(state): State<Arc<SharedState>>) -> impl IntoRespon
     current_settings.snoozed_update_until = Some(until);
     let _ = state.settings_manager.save(&current_settings);
     Json(serde_json::json!({ "snoozed_until": until }))
+}
+
+async fn serve_customize_spa(State(state): State<Arc<SharedState>>) -> Response {
+    let frontend_dir = state.config.resolve_frontend_dist();
+    if let Some(dir) = frontend_dir {
+        let index_path = dir.join("index.html");
+        match tokio::fs::read(&index_path).await {
+            Ok(bytes) => {
+                ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], bytes).into_response()
+            }
+            Err(_) => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
+        }
+    } else {
+        super::assets::embedded_asset_handler(Uri::from_static("/index.html")).await
+    }
 }

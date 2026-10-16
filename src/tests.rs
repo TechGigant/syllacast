@@ -175,6 +175,7 @@ fn test_secret_key_not_leaked_in_debug_or_snapshots() {
         track: None,
         position: None,
         queue_upcoming: Vec::new(),
+        queue_history: Vec::new(),
         lyrics: None,
         lyrics_status: LyricsStatus::Found,
         volume: Some(75),
@@ -620,6 +621,7 @@ async fn test_sync_lyrics_for_track_deduplication() {
             track: None,
             position: None,
             queue_upcoming: Vec::new(),
+            queue_history: Vec::new(),
             lyrics: None,
             lyrics_status: LyricsStatus::Idle,
             volume: None,
@@ -651,6 +653,7 @@ async fn test_sync_lyrics_for_track_deduplication() {
         track: Some(track.clone()),
         position: None,
         queue_upcoming: Vec::new(),
+        queue_history: Vec::new(),
         lyrics: None,
         lyrics_status: LyricsStatus::Loading,
         volume: None,
@@ -1435,6 +1438,7 @@ async fn test_api_health_endpoint() {
             track: None,
             position: None,
             queue_upcoming: Vec::new(),
+            queue_history: Vec::new(),
             lyrics: None,
             lyrics_status: LyricsStatus::Idle,
             volume: None,
@@ -1461,6 +1465,431 @@ async fn test_api_health_endpoint() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_legacy_settings_backward_compatibility() {
+    use crate::settings::{KioskSettings, WidgetType};
+
+    let legacy_json = r#"{
+        "show_controls_buttons": false,
+        "startup_mode": "cinema",
+        "calibration_offset_ms": 120
+    }"#;
+
+    let settings: KioskSettings =
+        serde_json::from_str(legacy_json).expect("deserialize legacy settings");
+
+    assert!(!settings.show_controls_buttons);
+    assert_eq!(settings.startup_mode, "cinema");
+    assert_eq!(settings.calibration_offset_ms, 120);
+
+    // active_profile_id and layout_profiles should default cleanly
+    assert_eq!(settings.active_profile_id, "default");
+    assert_eq!(settings.layout_profiles.len(), 4);
+
+    let profile_ids: Vec<&str> = settings
+        .layout_profiles
+        .iter()
+        .map(|p| p.id.as_str())
+        .collect();
+    assert_eq!(
+        profile_ids,
+        vec!["default", "living_room_tv", "party", "minimal"]
+    );
+
+    // Verify "default" preset
+    let default_profile = &settings.layout_profiles[0];
+    assert_eq!(default_profile.name, "Standard Kiosk");
+    assert_eq!(default_profile.widgets.len(), 4);
+    assert_eq!(default_profile.widgets[0].id, "nowbar-1");
+    assert_eq!(default_profile.widgets[0].widget_type, WidgetType::Nowbar);
+    assert_eq!(default_profile.widgets[0].x, 2);
+    assert_eq!(default_profile.widgets[0].y, 2);
+    assert_eq!(default_profile.widgets[0].w, 9);
+    assert_eq!(default_profile.widgets[0].h, 10);
+    assert!(!default_profile.widgets[0].show_glass);
+
+    // Verify "living_room_tv" preset
+    let tv_profile = &settings.layout_profiles[1];
+    assert_eq!(tv_profile.name, "Living Room Hub");
+    assert_eq!(tv_profile.widgets.len(), 6);
+    let vis = tv_profile
+        .widgets
+        .iter()
+        .find(|w| w.id == "visualizer-1")
+        .expect("visualizer-1");
+    assert_eq!(vis.widget_type, WidgetType::Visualizer);
+    assert_eq!(vis.config["style"], "bars");
+    assert_eq!(vis.config["bar_count"], 32);
+
+    let weather = tv_profile
+        .widgets
+        .iter()
+        .find(|w| w.id == "weather-1")
+        .expect("weather-1");
+    assert_eq!(weather.widget_type, WidgetType::Weather);
+    assert_eq!(weather.config["location_name"], "Berlin");
+
+    // Verify "party" preset
+    let party_profile = &settings.layout_profiles[2];
+    assert_eq!(party_profile.name, "Party & Visualizer");
+    assert_eq!(party_profile.widgets.len(), 6);
+    let party_vis = party_profile
+        .widgets
+        .iter()
+        .find(|w| w.id == "visualizer-1")
+        .expect("visualizer-1");
+    assert_eq!(party_vis.config["style"], "waves");
+    assert_eq!(party_vis.config["mirror"], true);
+
+    // Verify "minimal" preset
+    let min_profile = &settings.layout_profiles[3];
+    assert_eq!(min_profile.name, "Cinema Lyrics");
+    assert_eq!(min_profile.widgets.len(), 2);
+}
+
+#[test]
+fn test_settings_load_populates_empty_layout_profiles() {
+    use crate::settings::SettingsManager;
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "syllacast-test-empty-profiles-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let manager = SettingsManager::new(&temp_dir);
+
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    // JSON with layout_profiles explicitly set to []
+    let json_with_empty_profiles = r#"{
+        "startup_mode": "standard",
+        "layout_profiles": []
+    }"#;
+    std::fs::write(manager.file_path(), json_with_empty_profiles).unwrap();
+
+    let loaded = manager.load();
+    assert_eq!(loaded.layout_profiles.len(), 4);
+    assert_eq!(loaded.active_profile_id, "default");
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_layout_profiles_and_widget_instances_roundtrip() {
+    use crate::settings::{KioskSettings, LayoutProfile, WidgetInstance, WidgetType};
+
+    let custom_profile = LayoutProfile {
+        id: "custom_studio".to_string(),
+        name: "Custom Studio".to_string(),
+        widgets: vec![WidgetInstance {
+            id: "note-guest".to_string(),
+            widget_type: WidgetType::Note,
+            x: 5,
+            y: 5,
+            w: 10,
+            h: 6,
+            show_glass: true,
+            config: serde_json::json!({
+                "mode": "plain_text",
+                "text": "Welcome to Syllacast Studio!"
+            }),
+        }],
+    };
+
+    let mut settings = KioskSettings {
+        active_profile_id: "custom_studio".to_string(),
+        ..Default::default()
+    };
+    settings.layout_profiles.push(custom_profile.clone());
+
+    let json = serde_json::to_string_pretty(&settings).expect("serialize settings");
+    let deserialized: KioskSettings =
+        serde_json::from_str(&json).expect("deserialize settings roundtrip");
+
+    assert_eq!(deserialized.active_profile_id, "custom_studio");
+    assert_eq!(deserialized.layout_profiles.len(), 5);
+    assert_eq!(
+        deserialized.layout_profiles.last().unwrap(),
+        &custom_profile
+    );
+}
+
+#[test]
+fn test_record_track_history_deduplication_and_truncation() {
+    use crate::sync::protocol::TrackMetadata;
+    use crate::{record_track_history, MAX_QUEUE_HISTORY};
+
+    let mut history = Vec::new();
+
+    let t1 = TrackMetadata {
+        id: "t1".to_string(),
+        uri: "spotify:track:t1".to_string(),
+        title: "Track 1".to_string(),
+        artist: "Artist 1".to_string(),
+        album: "Album 1".to_string(),
+        cover_url: Some("https://example.com/cover1.jpg".to_string()),
+        duration_ms: 200_000,
+    };
+
+    // 1. Record track 1
+    record_track_history(&mut history, &t1);
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].title, "Track 1");
+    assert_eq!(history[0].artist, "Artist 1");
+    assert_eq!(
+        history[0].cover_url.as_deref(),
+        Some("https://example.com/cover1.jpg")
+    );
+    assert_eq!(history[0].uri.as_deref(), Some("spotify:track:t1"));
+    assert_eq!(history[0].duration_ms, Some(200_000));
+
+    // 2. Consecutive duplicate with same URI -> ignored
+    record_track_history(&mut history, &t1);
+    assert_eq!(history.len(), 1);
+
+    // 3. Track with empty URI -> ignored
+    let t_empty = TrackMetadata {
+        id: "".to_string(),
+        uri: "".to_string(),
+        title: "Empty".to_string(),
+        artist: "Empty".to_string(),
+        album: "Empty".to_string(),
+        cover_url: None,
+        duration_ms: 0,
+    };
+    record_track_history(&mut history, &t_empty);
+    assert_eq!(history.len(), 1);
+
+    // 4. Record track 2 -> prepended at index 0
+    let t2 = TrackMetadata {
+        id: "t2".to_string(),
+        uri: "spotify:track:t2".to_string(),
+        title: "Track 2".to_string(),
+        artist: "Artist 2".to_string(),
+        album: "Album 2".to_string(),
+        cover_url: None,
+        duration_ms: 180_000,
+    };
+    record_track_history(&mut history, &t2);
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].uri.as_deref(), Some("spotify:track:t2"));
+    assert_eq!(history[1].uri.as_deref(), Some("spotify:track:t1"));
+
+    // 5. Non-consecutive duplicate (t1 again) -> allowed at index 0
+    record_track_history(&mut history, &t1);
+    assert_eq!(history.len(), 3);
+    assert_eq!(history[0].uri.as_deref(), Some("spotify:track:t1"));
+    assert_eq!(history[1].uri.as_deref(), Some("spotify:track:t2"));
+    assert_eq!(history[2].uri.as_deref(), Some("spotify:track:t1"));
+
+    // 6. Push 25 tracks total -> verify truncation to MAX_QUEUE_HISTORY (15)
+    for i in 3..=25 {
+        let t = TrackMetadata {
+            id: format!("t{i}"),
+            uri: format!("spotify:track:t{i}"),
+            title: format!("Track {i}"),
+            artist: format!("Artist {i}"),
+            album: format!("Album {i}"),
+            cover_url: None,
+            duration_ms: 100_000 + i as u64,
+        };
+        record_track_history(&mut history, &t);
+    }
+    assert_eq!(history.len(), MAX_QUEUE_HISTORY);
+    assert_eq!(history.len(), 15);
+    assert_eq!(history[0].uri.as_deref(), Some("spotify:track:t25"));
+    assert_eq!(history[14].uri.as_deref(), Some("spotify:track:t11"));
+}
+
+#[test]
+fn test_extract_queue_item_metadata() {
+    use crate::extract_queue_item;
+    use crate::soloist::models::SoloistEntity;
+
+    let json = r#"{
+        "uri": "spotify:track:queue123",
+        "entity_type": "track",
+        "decorations": {
+            "identity": { "name": "Queue Song" },
+            "creators": [
+                {
+                    "decorations": {
+                        "identity": { "name": "Artist One" }
+                    }
+                }
+            ],
+            "visual_identity": {
+                "cover": [
+                    { "url": "https://i.scdn.co/image/queue_cover", "size": "large" }
+                ]
+            },
+            "playback": {
+                "duration_ms": 215000
+            }
+        }
+    }"#;
+
+    let entity: SoloistEntity = serde_json::from_str(json).expect("deserialize SoloistEntity");
+    let item = extract_queue_item(&entity).expect("extract queue item");
+    assert_eq!(item.title, "Queue Song");
+    assert_eq!(item.artist, "Artist One");
+    assert_eq!(
+        item.cover_url.as_deref(),
+        Some("https://i.scdn.co/image/queue_cover")
+    );
+    assert_eq!(item.uri.as_deref(), Some("spotify:track:queue123"));
+    assert_eq!(item.duration_ms, Some(215_000));
+}
+
+#[tokio::test]
+async fn test_customize_route_embedded_and_disk() {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use std::sync::Arc;
+    use tokio::sync::{broadcast, RwLock};
+    use tower::ServiceExt;
+
+    use crate::config::Config;
+    use crate::server::SharedState;
+    use crate::settings::{KioskSettings, SettingsManager};
+    use crate::sync::protocol::{AppStateSnapshot, LyricsStatus};
+    use crate::updater::UpdateService;
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("syllacast_test_customize_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    // 1. Embedded assets mode
+    let (tx, _rx) = broadcast::channel(16);
+    let (soloist_cmd_tx, _soloist_cmd_rx) = tokio::sync::mpsc::channel(16);
+    let settings_manager = SettingsManager::new(&temp_dir);
+
+    let shared_state = Arc::new(SharedState {
+        config: Config::default(),
+        current_state: RwLock::new(AppStateSnapshot {
+            is_playing: false,
+            status: "idle".to_string(),
+            track: None,
+            position: None,
+            queue_upcoming: Vec::new(),
+            queue_history: Vec::new(),
+            lyrics: None,
+            lyrics_status: LyricsStatus::Idle,
+            volume: None,
+            shuffle: None,
+            repeat: None,
+        }),
+        tx,
+        settings: RwLock::new(KioskSettings::default()),
+        settings_lock: tokio::sync::Mutex::new(()),
+        settings_manager,
+        soloist_cmd_tx,
+        updater: Arc::new(UpdateService::new()),
+    });
+    let router = crate::server::routes::create_routes(shared_state);
+
+    let res_no_slash = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/customize")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res_no_slash.status(), StatusCode::OK);
+    assert!(res_no_slash
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with("text/html"));
+
+    let res_slash = router
+        .oneshot(
+            Request::builder()
+                .uri("/customize/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res_slash.status(), StatusCode::OK);
+    assert!(res_slash
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with("text/html"));
+
+    // 2. Disk override mode
+    let disk_dist = temp_dir.join("dist");
+    std::fs::create_dir_all(&disk_dist).unwrap();
+    std::fs::write(disk_dist.join("index.html"), b"<html>Custom HTML</html>").unwrap();
+
+    let (tx2, _rx2) = broadcast::channel(16);
+    let (soloist_cmd_tx2, _soloist_cmd_rx2) = tokio::sync::mpsc::channel(16);
+    let settings_manager2 = SettingsManager::new(&temp_dir);
+
+    let config_disk = Config {
+        frontend_dist: Some(disk_dist),
+        ..Default::default()
+    };
+
+    let shared_state_disk = Arc::new(SharedState {
+        config: config_disk,
+        current_state: RwLock::new(AppStateSnapshot {
+            is_playing: false,
+            status: "idle".to_string(),
+            track: None,
+            position: None,
+            queue_upcoming: Vec::new(),
+            queue_history: Vec::new(),
+            lyrics: None,
+            lyrics_status: LyricsStatus::Idle,
+            volume: None,
+            shuffle: None,
+            repeat: None,
+        }),
+        tx: tx2,
+        settings: RwLock::new(KioskSettings::default()),
+        settings_lock: tokio::sync::Mutex::new(()),
+        settings_manager: settings_manager2,
+        soloist_cmd_tx: soloist_cmd_tx2,
+        updater: Arc::new(UpdateService::new()),
+    });
+    let router_disk = crate::server::routes::create_routes(shared_state_disk);
+
+    let res_disk = router_disk
+        .oneshot(
+            Request::builder()
+                .uri("/customize")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res_disk.status(), StatusCode::OK);
+    assert_eq!(
+        res_disk
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "text/html; charset=utf-8"
+    );
+
+    let body_bytes = axum::body::to_bytes(res_disk.into_body(), 1024)
+        .await
+        .unwrap();
+    assert_eq!(&body_bytes[..], b"<html>Custom HTML</html>");
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

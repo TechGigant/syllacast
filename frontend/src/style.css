@@ -50,8 +50,8 @@ html, body {
   position: relative;
 }
 
-/* Hide Close button on standalone kiosk */
-#SpicyLyricsPage .ContentBox > .ViewControls #Close {
+/* Hide Close button on standalone kiosk (both in ContentBox and when moved into MediaContent) */
+#SpicyLyricsPage .ViewControls #Close {
   display: none !important;
 }
 

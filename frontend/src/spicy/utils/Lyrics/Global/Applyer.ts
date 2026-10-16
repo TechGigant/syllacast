@@ -110,6 +110,11 @@ export default async function ApplyLyrics(lyricsContent: FetchLyricsResult): Pro
   // queued state, which keeps its loader on purpose.
   if (descriptor !== "lyrics-queued") HideLoaderContainer();
 
+  if (descriptor !== "lyrics-not-found" && descriptor !== "local-track") {
+    PageContainer?.querySelector<HTMLElement>(".ContentBox .LyricsContainer")?.classList.remove("Hidden");
+    PageContainer?.querySelector<HTMLElement>(".ContentBox")?.classList.remove("LyricsHidden");
+  }
+
   let noticeContent: string | null = null;
 
   switch (descriptor) {
@@ -200,7 +205,7 @@ export default async function ApplyLyrics(lyricsContent: FetchLyricsResult): Pro
     currentNoticeElement.classList.add("LyricsNotice");
     lyricsContainer.appendChild(currentNoticeElement);
 
-    if (!IsCompactMode() && (Fullscreen.IsOpen || Fullscreen.CinemaViewOpen) && (descriptor === "lyrics-not-found" || descriptor === "local-track")) {
+    if (!IsCompactMode() && (descriptor === "lyrics-not-found" || descriptor === "local-track")) {
       PageContainer?.querySelector<HTMLElement>(".ContentBox .LyricsContainer")?.classList.add("Hidden");
       PageContainer?.querySelector<HTMLElement>(".ContentBox")?.classList.add("LyricsHidden");
     }

@@ -54,6 +54,9 @@ export function createKioskUpNext(): { element: HTMLElement; update: (queue: Que
 
   function update(queue: QueueItemDto[] | undefined) {
     if (!queue || queue.length === 0 || !queue[0]?.title) {
+      titleEl.textContent = "No upcoming tracks";
+      artistEl.textContent = "Queue is empty";
+      thumbEl.style.display = "none";
       cardEl.style.opacity = "0";
       cardEl.style.transform = "translateY(12px)";
       cardEl.style.pointerEvents = "none";
@@ -74,6 +77,8 @@ export function createKioskUpNext(): { element: HTMLElement; update: (queue: Que
     cardEl.style.transform = "translateY(0)";
     cardEl.style.pointerEvents = "auto";
   }
+
+  update(undefined);
 
   return {
     element: cardEl,

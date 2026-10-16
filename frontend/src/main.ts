@@ -13,6 +13,8 @@
 // Syllacast - Standalone 1:1 Spicy Lyrics Web Kiosk
 import { setShimProgressGetter, setShimCommandSender } from "./bridge/spicetifyShim.ts";
 import "./style.css";
+import "./styles/grid-layout.css";
+import "./styles/customize-studio.css";
 import { ClockSync } from "./sync/clock.ts";
 import { PlaybackTimeline, type PositionAnchor } from "./sync/timeline.ts";
 import { setCustomProgressProvider } from "./spicy/utils/Gets/GetProgress.ts";
@@ -42,28 +44,20 @@ import { createKioskClock } from "./kiosk/clock.ts";
 import { createKioskUpNext } from "./kiosk/upNext.ts";
 import { createKioskFooter } from "./kiosk/footer.ts";
 import { createKioskUpdateBanner } from "./kiosk/updateBanner.ts";
+import { createCustomizeStudio, type KioskSettings } from "./kiosk/customizeStudio.ts";
+import { isTypingInInput } from "./kiosk/gridMath.ts";
+import { DEFAULT_LAYOUT_PROFILES } from "./kiosk/widgets/types.ts";
 import { $nowBarSide, $isNowBarOpen } from "./spicy/utils/uiState.ts";
 import { $staticBackgroundMode } from "./spicy/utils/stores.ts";
 import Fullscreen from "./spicy/components/Utils/Fullscreen.ts";
 
-export interface KioskSettings {
-  show_controls_buttons: boolean;
-  startup_mode: string;
-  nowbar_open: boolean;
-  nowbar_side: string;
-  clock_enabled: boolean;
-  up_next_enabled: boolean;
-  calibration_offset_ms: number;
-  dynamic_bg_mode: string;
-  update_mode?: string;
-  update_channel?: string;
-  update_check_interval_hours?: number;
-}
-
+export type { KioskSettings };
 
 // Subsystems
 const clockSync = new ClockSync();
 const timeline = new PlaybackTimeline(clockSync);
+let activeWs: WebSocket | null = null;
+let latestAppState: AppStateSnapshot | null = null;
 
 // Connect Syllacast high-precision NTP-anchored timeline directly to Spicy Lyrics & Spicetify shim
 setCustomProgressProvider(() => timeline.getInterpolatedPositionMs());
@@ -89,6 +83,33 @@ appRoot.appendChild(kioskFooter.element);
 const kioskUpdateBanner = createKioskUpdateBanner();
 document.body.appendChild(kioskUpdateBanner.element);
 
+// Mount Interactive Layout Customization & Widget Studio
+const customizeStudio = createCustomizeStudio({
+  clockElement: kioskClock.element,
+  upNextElement: kioskUpNext.element,
+  getInterpolatedPositionMs: () => timeline.getInterpolatedPositionMs(),
+  sendCommand: (cmd) => {
+    if (activeWs && activeWs.readyState === WebSocket.OPEN) {
+      activeWs.send(JSON.stringify(cmd));
+    }
+  },
+  getLatestState: () => latestAppState,
+});
+
+// Apply initial default grid layout immediately before server settings arrive
+customizeStudio.applySettings({
+  show_controls_buttons: true,
+  startup_mode: "standard",
+  nowbar_open: true,
+  nowbar_side: "left",
+  clock_enabled: true,
+  up_next_enabled: true,
+  calibration_offset_ms: 0,
+  dynamic_bg_mode: "dynamic",
+  active_profile_id: "default",
+  layout_profiles: DEFAULT_LAYOUT_PROFILES,
+});
+
 // Start authentic Spicy Lyrics auto-scrolling manager
 new IntervalManager(ScrollingIntervalTime, () => {
   if (ScrollSimplebar) {
@@ -99,6 +120,7 @@ new IntervalManager(ScrollingIntervalTime, () => {
 // Settings & Diagnostics DOM (Overlay)
 const settingsDialog = document.getElementById("settings-dialog") as HTMLElement;
 const settingsClose = document.getElementById("settings-close") as HTMLButtonElement;
+const openCustomizeBtn = document.getElementById("open-customize-studio-btn") as HTMLButtonElement | null;
 const calibSlider = document.getElementById("calib-slider") as HTMLInputElement;
 const calibMs = document.getElementById("calib-ms") as HTMLElement;
 const diagRtt = document.getElementById("diag-rtt") as HTMLElement;
@@ -120,8 +142,19 @@ if (settingsClose && settingsDialog) {
   });
 }
 
+if (openCustomizeBtn) {
+  openCustomizeBtn.addEventListener("click", () => {
+    if (settingsDialog) {
+      settingsDialog.style.display = "none";
+    }
+    customizeStudio.enterEditMode();
+  });
+}
+
 window.addEventListener("keydown", (e) => {
-  if (e.key === "s" || e.key === "S") {
+  if (isTypingInInput(e.target)) return;
+
+  if ((e.key === "s" || e.key === "S") && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (!settingsDialog) return;
     const isHidden = settingsDialog.style.display === "none" || !settingsDialog.style.display;
     settingsDialog.style.display = isHidden ? "block" : "none";
@@ -142,20 +175,14 @@ function applyKioskSettings(settings: KioskSettings) {
     viewControls.style.display = settings.show_controls_buttons ? "flex" : "none";
   }
 
-  // 2. Kiosk clock visibility
-  kioskClock.element.style.display = settings.clock_enabled ? "flex" : "none";
-
-  // 3. Up Next queue visibility
-  kioskUpNext.element.style.display = settings.up_next_enabled ? "flex" : "none";
-
-  // 4. Calibration offset
+  // 2. Calibration offset
   if (typeof settings.calibration_offset_ms === "number") {
     timeline.setCalibrationMs(settings.calibration_offset_ms);
     if (calibSlider) calibSlider.value = settings.calibration_offset_ms.toString();
     if (calibMs) calibMs.textContent = `${settings.calibration_offset_ms} ms`;
   }
 
-  // 6. NowBar side & open/closed state
+  // 3. NowBar side & open/closed state
   const pageContainer = document.getElementById("SpicyLyricsPage");
   const nowBar = pageContainer?.querySelector<HTMLElement>(".ContentBox .NowBar");
   if (pageContainer && nowBar) {
@@ -173,26 +200,38 @@ function applyKioskSettings(settings: KioskSettings) {
     nowBar.classList.toggle("Active", isOpen);
   }
 
-  // 7. Startup / Display Mode
+  // 4. Startup / Display Mode
   if (settings.startup_mode === "cinema" && !Fullscreen.IsOpen) {
     Fullscreen.Open(true, false);
   } else if (settings.startup_mode === "standard" && Fullscreen.IsOpen) {
     Fullscreen.CloseImmediately();
   }
 
-  // 8. Dynamic Background Mode
+  // 5. Dynamic Background Mode
   if (settings.dynamic_bg_mode === "static") {
     $staticBackgroundMode.set("artistHeader");
   } else {
     $staticBackgroundMode.set("off");
   }
+
+  // 6. Apply 24x12 Grid Layout Profile & Widgets
+  customizeStudio.applySettings(settings);
 }
+
+// Fetch initial settings over HTTP so custom profiles apply immediately
+fetch("/api/settings")
+  .then((res) => (res.ok ? res.json() : null))
+  .then((settings) => {
+    if (settings) applyKioskSettings(settings);
+  })
+  .catch(() => {});
 
 // WebSocket Connection to Syllacast backend
 function connectWebSocket() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws`;
   const ws = new WebSocket(wsUrl);
+  activeWs = ws;
 
   ws.onopen = () => {
     clockSync.attach(ws);
@@ -232,6 +271,7 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
+    if (activeWs === ws) activeWs = null;
     setShimCommandSender(() => {});
     clockSync.detach();
     setTimeout(connectWebSocket, 2000);
@@ -243,6 +283,8 @@ let lastLyricsKey: string | null = null;
 let lastKnownPositionMs = 0;
 
 function handleStateUpdate(state: AppStateSnapshot) {
+  latestAppState = state;
+  customizeStudio.onStateUpdate(state);
   const { songChanged, playPauseChanged } = updateSpotifyPlayerState(state);
   const currentUri = state.track?.uri || "";
 

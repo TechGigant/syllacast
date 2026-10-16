@@ -17,11 +17,15 @@ pub struct TrackMetadata {
     pub duration_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QueueItemDto {
     pub title: String,
     pub artist: String,
     pub cover_url: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,6 +49,8 @@ pub struct AppStateSnapshot {
     pub track: Option<TrackMetadata>,
     pub position: Option<PositionAnchor>,
     pub queue_upcoming: Vec<QueueItemDto>,
+    #[serde(default)]
+    pub queue_history: Vec<QueueItemDto>,
     pub lyrics: Option<LyricsEnvelope>,
     #[serde(default = "default_lyrics_status")]
     pub lyrics_status: LyricsStatus,

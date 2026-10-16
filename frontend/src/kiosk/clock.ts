@@ -37,6 +37,10 @@ export function createKioskClock(): { element: HTMLElement; start: () => void; d
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   `;
 
+  const textSpan = document.createElement("span");
+  textSpan.className = "KioskClockText";
+  clockEl.appendChild(textSpan);
+
   let timerId: number | null = null;
 
   function update() {
@@ -44,7 +48,7 @@ export function createKioskClock(): { element: HTMLElement; start: () => void; d
     const hours = now.getHours().toString().padStart(2, "0");
     const minutes = now.getMinutes().toString().padStart(2, "0");
     const seconds = now.getSeconds().toString().padStart(2, "0");
-    clockEl.textContent = `${hours}:${minutes}:${seconds}`;
+    textSpan.textContent = `${hours}:${minutes}:${seconds}`;
   }
 
   update();

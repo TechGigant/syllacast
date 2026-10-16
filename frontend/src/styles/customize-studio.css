@@ -1,0 +1,806 @@
+/*
+ * Syllacast - Standalone Spotify Lyrics Kiosk
+ * Copyright (C) 2026 TechGigant
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/* ==========================================================================
+   Interactive Layout Customization Studio & Edit Mode Styles
+   ========================================================================== */
+
+#SpicyLyricsPage.EditModeActive {
+  user-select: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Grid Backdrop & Alignment Overlays
+   -------------------------------------------------------------------------- */
+
+.GridBackdropOverlay {
+  position: absolute !important;
+  inset: 16px 20px 38px 20px !important;
+  display: grid !important;
+  grid-template-columns: repeat(24, minmax(0, 1fr)) !important;
+  grid-template-rows: repeat(12, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+  opacity: 0.9;
+  transition: opacity 0.25s ease;
+}
+
+.GridBackdropOverlay.GridBackdropOverlay--hidden {
+  opacity: 0 !important;
+}
+
+.GridBackdropCell {
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+  box-sizing: border-box;
+}
+
+/* Cyan Ghost Drop Preview Indicator */
+.GridGhostPreview {
+  position: relative;
+  background: rgba(56, 189, 248, 0.18) !important;
+  border: 2px dashed rgba(56, 189, 248, 0.85) !important;
+  border-radius: 20px !important;
+  pointer-events: none !important;
+  z-index: 4 !important;
+  box-sizing: border-box !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.2);
+}
+
+.GridGhostPreview--overlap {
+  background: rgba(245, 158, 11, 0.22) !important;
+  border-color: rgba(245, 158, 11, 0.9) !important;
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.3) !important;
+}
+
+/* Snap Guide Lasers */
+.GridSnapGuide--vertical {
+  position: absolute !important;
+  top: 16px !important;
+  bottom: 38px !important;
+  width: 2px !important;
+  background: rgba(56, 189, 248, 0.85) !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9) !important;
+  transform: translateX(-50%) !important;
+  z-index: 50 !important;
+  pointer-events: none !important;
+}
+
+.GridSnapGuide--horizontal {
+  position: absolute !important;
+  left: 20px !important;
+  right: 20px !important;
+  height: 2px !important;
+  background: rgba(56, 189, 248, 0.85) !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9) !important;
+  transform: translateY(-50%) !important;
+  z-index: 50 !important;
+  pointer-events: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Widget Edit Chrome & Header Bar
+   -------------------------------------------------------------------------- */
+
+#SpicyLyricsPage.EditModeActive .KioskGridWidget {
+  outline: 1px dashed rgba(255, 255, 255, 0.25);
+  transition: outline-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#SpicyLyricsPage.EditModeActive .KioskGridWidget:hover {
+  outline: 2px solid rgba(56, 189, 248, 0.75);
+}
+
+#SpicyLyricsPage.EditModeActive .KioskGridWidget.KioskGridWidget--active {
+  outline: 2px solid #38bdf8 !important;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.45) !important;
+  z-index: 15 !important;
+}
+
+#SpicyLyricsPage.EditModeActive .KioskGridWidget.KioskGridWidget--dragging {
+  opacity: 0.85;
+  cursor: grabbing !important;
+}
+
+/* Edit Mode Header Bar */
+.WidgetEditOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  z-index: 20;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  font-size: 11px;
+  color: #f8fafc;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+/* For compact fit-content widgets (Clock & UpNext), float the edit bar just outside the pill/card so it never obscures their content */
+.KioskClock.KioskGridWidget > .WidgetEditOverlay {
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: 150px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.KioskUpNext.KioskGridWidget > .WidgetEditOverlay {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  width: max-content;
+  min-width: 160px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.WidgetEditHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.WidgetEditHeaderLeft:active {
+  cursor: grabbing;
+}
+
+.WidgetEditGrip {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.5);
+  width: 14px;
+  height: 14px;
+}
+
+.WidgetEditTitle {
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+
+.WidgetSpanBadge {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+}
+
+.WidgetEditActions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.WidgetEditBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.WidgetEditBtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.WidgetEditBtn--delete:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}
+
+/* Transparent Drag Shield over widget interior */
+.WidgetEditShield {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: grab;
+  background: transparent;
+}
+
+#SpicyLyricsPage.EditModeActive .WidgetEditShield {
+  display: block !important;
+}
+
+#SpicyLyricsPage.EditModeActive iframe {
+  pointer-events: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   8-Point Resize Handles
+   -------------------------------------------------------------------------- */
+
+.WidgetResizeHandle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #38bdf8;
+  border: 2px solid #0f172a;
+  border-radius: 50%;
+  z-index: 25;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  box-sizing: content-box;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+#SpicyLyricsPage.EditModeActive .KioskGridWidget:hover .WidgetResizeHandle,
+#SpicyLyricsPage.EditModeActive .KioskGridWidget.KioskGridWidget--active .WidgetResizeHandle {
+  opacity: 1;
+}
+
+.WidgetResizeHandle--nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.WidgetResizeHandle--n {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.WidgetResizeHandle--ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.WidgetResizeHandle--e {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.WidgetResizeHandle--se {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+.WidgetResizeHandle--s {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.WidgetResizeHandle--sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.WidgetResizeHandle--w {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+/* --------------------------------------------------------------------------
+   Floating Studio Dock Bar
+   -------------------------------------------------------------------------- */
+
+.CustomizeDock {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  color: #fff;
+  user-select: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  animation: CustomizeDockSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes CustomizeDockSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.CustomizeDockGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.CustomizeDockDivider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 4px;
+}
+
+.CustomizeDockBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.CustomizeDockBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.CustomizeDockBtn--primary {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #fff;
+  font-weight: 600;
+}
+
+.CustomizeDockBtn--primary:hover {
+  background: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.CustomizeDockBtn--danger {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.CustomizeDockBtn--danger:hover {
+  background: rgba(239, 68, 68, 0.32);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fff;
+}
+
+.CustomizeDockBtn--active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+
+.CustomizeProfileSelect {
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+}
+
+.CustomizeProfileSelect:focus {
+  border-color: #38bdf8;
+}
+
+/* --------------------------------------------------------------------------
+   Widget Catalog Drawer
+   -------------------------------------------------------------------------- */
+
+.WidgetCatalogDrawer {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(780px, 94vw);
+  max-height: 65vh;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #fff;
+  animation: CatalogDrawerSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes CatalogDrawerSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.WidgetCatalogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.WidgetCatalogHeader h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.WidgetCatalogCloseBtn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.WidgetCatalogCloseBtn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.WidgetCatalogGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px 20px 20px 20px;
+  overflow-y: auto;
+}
+
+.WidgetCatalogCard {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.15s ease;
+}
+
+.WidgetCatalogCard:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(56, 189, 248, 0.45);
+  transform: translateY(-2px);
+}
+
+.WidgetCatalogCardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.WidgetCatalogIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.WidgetCatalogIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.WidgetCatalogInfo {
+  min-width: 0;
+}
+
+.WidgetCatalogTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 2px;
+}
+
+.WidgetCatalogDesc {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.WidgetCatalogCardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.WidgetCatalogSpanInfo {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.WidgetCatalogAddBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.WidgetCatalogAddBtn:hover:not(:disabled) {
+  background: #0284c7;
+  color: #fff;
+  border-color: #38bdf8;
+}
+
+.WidgetCatalogAddBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+
+/* --------------------------------------------------------------------------
+   Widget Settings Modal & Dialogs
+   -------------------------------------------------------------------------- */
+
+.WidgetSettingsModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: ModalFadeIn 0.2s ease;
+}
+
+@keyframes ModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.WidgetSettingsCard {
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  width: min(540px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f8fafc;
+  animation: ModalCardPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ModalCardPop {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.WidgetSettingsModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.WidgetSettingsModalHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.WidgetSettingsModalBody {
+  padding: 20px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.WidgetSettingsModalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* Common form controls in Settings Modal */
+.StudioFormGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.StudioFormLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.StudioFormInput,
+.StudioFormSelect,
+.StudioFormTextarea {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.StudioFormInput:focus,
+.StudioFormSelect:focus,
+.StudioFormTextarea:focus {
+  border-color: #38bdf8;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.StudioToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.StudioToggleLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+/* Switch toggle */
+.StudioSwitch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.StudioSwitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.StudioSlider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  transition: 0.2s;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.StudioSlider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+.StudioSwitch input:checked + .StudioSlider {
+  background-color: #0284c7;
+  border-color: #38bdf8;
+}
+
+.StudioSwitch input:checked + .StudioSlider:before {
+  transform: translateX(18px);
+}

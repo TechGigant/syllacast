@@ -10,6 +10,301 @@ use tracing::{error, info, warn};
 static BACKUP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub const MAX_BACKUPS: usize = 10;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetType {
+    Lyrics,
+    Nowbar,
+    Clock,
+    UpNext,
+    PlayerControls,
+    Iframe,
+    Visualizer,
+    Weather,
+    ExtendedQueue,
+    Note,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WidgetInstance {
+    pub id: String,
+    pub widget_type: WidgetType,
+    pub x: u8,
+    pub y: u8,
+    pub w: u8,
+    pub h: u8,
+    #[serde(default = "default_true")]
+    pub show_glass: bool,
+    #[serde(default = "default_empty_object")]
+    pub config: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LayoutProfile {
+    pub id: String,
+    pub name: String,
+    pub widgets: Vec<WidgetInstance>,
+}
+
+pub fn default_layout_profiles() -> Vec<LayoutProfile> {
+    vec![
+        LayoutProfile {
+            id: "default".to_string(),
+            name: "Standard Kiosk".to_string(),
+            widgets: vec![
+                WidgetInstance {
+                    id: "nowbar-1".to_string(),
+                    widget_type: WidgetType::Nowbar,
+                    x: 2,
+                    y: 2,
+                    w: 9,
+                    h: 10,
+                    show_glass: false,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "lyrics-1".to_string(),
+                    widget_type: WidgetType::Lyrics,
+                    x: 12,
+                    y: 1,
+                    w: 12,
+                    h: 11,
+                    show_glass: false,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "up_next-1".to_string(),
+                    widget_type: WidgetType::UpNext,
+                    x: 19,
+                    y: 12,
+                    w: 6,
+                    h: 1,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "clock-1".to_string(),
+                    widget_type: WidgetType::Clock,
+                    x: 1,
+                    y: 1,
+                    w: 3,
+                    h: 1,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+            ],
+        },
+        LayoutProfile {
+            id: "living_room_tv".to_string(),
+            name: "Living Room Hub".to_string(),
+            widgets: vec![
+                WidgetInstance {
+                    id: "nowbar-1".to_string(),
+                    widget_type: WidgetType::Nowbar,
+                    x: 1,
+                    y: 1,
+                    w: 8,
+                    h: 8,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "visualizer-1".to_string(),
+                    widget_type: WidgetType::Visualizer,
+                    x: 1,
+                    y: 9,
+                    w: 8,
+                    h: 4,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "style": "bars",
+                        "bar_count": 32,
+                        "sensitivity": 1.0,
+                        "color_mode": "cover_accent",
+                        "mirror": false
+                    }),
+                },
+                WidgetInstance {
+                    id: "lyrics-1".to_string(),
+                    widget_type: WidgetType::Lyrics,
+                    x: 9,
+                    y: 1,
+                    w: 10,
+                    h: 12,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "weather-1".to_string(),
+                    widget_type: WidgetType::Weather,
+                    x: 19,
+                    y: 1,
+                    w: 6,
+                    h: 3,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "location_name": "Berlin",
+                        "latitude": 52.52,
+                        "longitude": 13.41,
+                        "unit": "celsius",
+                        "show_forecast": true
+                    }),
+                },
+                WidgetInstance {
+                    id: "extended_queue-1".to_string(),
+                    widget_type: WidgetType::ExtendedQueue,
+                    x: 19,
+                    y: 4,
+                    w: 6,
+                    h: 5,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "mode": "tabs",
+                        "max_items": 8,
+                        "show_covers": true,
+                        "click_to_play": true
+                    }),
+                },
+                WidgetInstance {
+                    id: "note-1".to_string(),
+                    widget_type: WidgetType::Note,
+                    x: 19,
+                    y: 9,
+                    w: 6,
+                    h: 4,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "mode": "wifi_qr",
+                        "title": "Guest Wi-Fi",
+                        "body_text": "Scan to connect",
+                        "text_align": "center",
+                        "wifi_ssid": "GuestWiFi",
+                        "wifi_password": "",
+                        "wifi_encryption": "WPA",
+                        "wifi_hidden": false,
+                        "show_password_text": true,
+                        "qr_url": ""
+                    }),
+                },
+            ],
+        },
+        LayoutProfile {
+            id: "party".to_string(),
+            name: "Party & Visualizer".to_string(),
+            widgets: vec![
+                WidgetInstance {
+                    id: "nowbar-1".to_string(),
+                    widget_type: WidgetType::Nowbar,
+                    x: 1,
+                    y: 1,
+                    w: 7,
+                    h: 7,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "extended_queue-1".to_string(),
+                    widget_type: WidgetType::ExtendedQueue,
+                    x: 1,
+                    y: 8,
+                    w: 7,
+                    h: 5,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "mode": "upcoming_only",
+                        "max_items": 8,
+                        "show_covers": true,
+                        "click_to_play": true
+                    }),
+                },
+                WidgetInstance {
+                    id: "lyrics-1".to_string(),
+                    widget_type: WidgetType::Lyrics,
+                    x: 8,
+                    y: 1,
+                    w: 11,
+                    h: 9,
+                    show_glass: false,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "visualizer-1".to_string(),
+                    widget_type: WidgetType::Visualizer,
+                    x: 8,
+                    y: 10,
+                    w: 17,
+                    h: 3,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "style": "waves",
+                        "bar_count": 48,
+                        "sensitivity": 1.2,
+                        "color_mode": "neon_gradient",
+                        "mirror": true
+                    }),
+                },
+                WidgetInstance {
+                    id: "note-1".to_string(),
+                    widget_type: WidgetType::Note,
+                    x: 19,
+                    y: 1,
+                    w: 6,
+                    h: 5,
+                    show_glass: true,
+                    config: serde_json::json!({
+                        "mode": "wifi_qr",
+                        "title": "Party Wi-Fi",
+                        "body_text": "Scan to join the network",
+                        "text_align": "center",
+                        "wifi_ssid": "GuestWiFi",
+                        "wifi_password": "",
+                        "wifi_encryption": "WPA",
+                        "wifi_hidden": false,
+                        "show_password_text": true,
+                        "qr_url": ""
+                    }),
+                },
+                WidgetInstance {
+                    id: "player_controls-1".to_string(),
+                    widget_type: WidgetType::PlayerControls,
+                    x: 19,
+                    y: 6,
+                    w: 6,
+                    h: 4,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+            ],
+        },
+        LayoutProfile {
+            id: "minimal".to_string(),
+            name: "Cinema Lyrics".to_string(),
+            widgets: vec![
+                WidgetInstance {
+                    id: "lyrics-1".to_string(),
+                    widget_type: WidgetType::Lyrics,
+                    x: 3,
+                    y: 1,
+                    w: 20,
+                    h: 12,
+                    show_glass: false,
+                    config: serde_json::json!({}),
+                },
+                WidgetInstance {
+                    id: "clock-1".to_string(),
+                    widget_type: WidgetType::Clock,
+                    x: 22,
+                    y: 1,
+                    w: 3,
+                    h: 1,
+                    show_glass: true,
+                    config: serde_json::json!({}),
+                },
+            ],
+        },
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KioskSettings {
     #[serde(default = "default_true")]
@@ -50,10 +345,24 @@ pub struct KioskSettings {
 
     #[serde(default)]
     pub snoozed_update_until: Option<i64>,
+
+    #[serde(default = "default_active_profile_id")]
+    pub active_profile_id: String,
+
+    #[serde(default = "default_layout_profiles")]
+    pub layout_profiles: Vec<LayoutProfile>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_empty_object() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+fn default_active_profile_id() -> String {
+    "default".to_string()
 }
 
 fn default_standard() -> String {
@@ -96,6 +405,8 @@ impl Default for KioskSettings {
             update_check_interval_hours: 24,
             dismissed_update_version: None,
             snoozed_update_until: None,
+            active_profile_id: "default".to_string(),
+            layout_profiles: default_layout_profiles(),
         }
     }
 }
@@ -165,7 +476,26 @@ impl SettingsManager {
         if self.file_path.exists() {
             match std::fs::read_to_string(&self.file_path) {
                 Ok(content) => match serde_json::from_str::<KioskSettings>(&content) {
-                    Ok(settings) => {
+                    Ok(mut settings) => {
+                        if settings.layout_profiles.is_empty() {
+                            settings.layout_profiles = default_layout_profiles();
+                        } else if let Some(def_prof) = settings
+                            .layout_profiles
+                            .iter_mut()
+                            .find(|p| p.id == "default")
+                        {
+                            let has_legacy_up_next = def_prof.widgets.iter().any(|w| {
+                                w.widget_type == WidgetType::UpNext && w.x == 18 && w.y == 1
+                            });
+                            if has_legacy_up_next {
+                                if let Some(fresh_def) = default_layout_profiles()
+                                    .into_iter()
+                                    .find(|p| p.id == "default")
+                                {
+                                    def_prof.widgets = fresh_def.widgets;
+                                }
+                            }
+                        }
                         info!("Loaded kiosk settings from {:?}", self.file_path);
                         return settings;
                     }
@@ -196,9 +526,12 @@ impl SettingsManager {
                         let backups = self.list_backups();
                         for backup_path in backups {
                             if let Ok(backup_content) = std::fs::read_to_string(&backup_path) {
-                                if let Ok(recovered) =
+                                if let Ok(mut recovered) =
                                     serde_json::from_str::<KioskSettings>(&backup_content)
                                 {
+                                    if recovered.layout_profiles.is_empty() {
+                                        recovered.layout_profiles = default_layout_profiles();
+                                    }
                                     warn!(
                                         "Recovering kiosk settings from valid backup: {:?}",
                                         backup_path
