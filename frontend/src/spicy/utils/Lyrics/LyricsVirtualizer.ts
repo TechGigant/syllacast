@@ -881,6 +881,48 @@ class LyricsVirtualizer {
     this._scrollToIndexWithRetry(index, align, instant, padding, 0, null);
   }
 
+  /**
+   * Computes the target scrollTop that would center (or align) a specific line index,
+   * without actually modifying the scroll position.
+   */
+  getTargetScrollTop(
+    index: number,
+    align: "start" | "center" | "end" | "auto" = "center",
+    padding: number = 0
+  ): number | null {
+    const v = this._virtualizer;
+    if (!v || !this._virtualContainer) return null;
+    const scrollEl = v.scrollElement;
+    if (!scrollEl) return null;
+    const viewportHeight = scrollEl.clientHeight;
+    if (!viewportHeight) return null;
+
+    const { start: itemStart, size: itemSize } = this._getItemRect(v, index);
+    const containerRect = this._virtualContainer.getBoundingClientRect();
+    const scrollElRect = scrollEl.getBoundingClientRect();
+    const containerOffset = containerRect.top - scrollElRect.top + scrollEl.scrollTop;
+
+    return this._computeFinalScrollTop(
+      itemStart,
+      itemSize,
+      viewportHeight,
+      containerOffset,
+      align,
+      padding
+    );
+  }
+
+  /**
+   * Indicates whether a programmatic scroll or smooth-scroll animation is currently active.
+   */
+  isProgrammaticScrolling(): boolean {
+    return Boolean(
+      this._converging ||
+      this._smoothRAF !== null ||
+      this._scrollVerifyRAF !== null
+    );
+  }
+
   // Where item N sits in the virtual container. Unmeasured items fall back to an
   // average-size estimate; callers re-read this as measurements land.
   private _getItemRect(
@@ -1472,4 +1514,16 @@ export function setOnNewElementMounted(cb: (() => void) | null): void {
 
 export function triggerRemeasureLV(): void {
   lyricsVirtualizer.remeasure();
+}
+
+export function getLyricsVirtualizerTargetScrollTop(
+  index: number,
+  align: "start" | "center" | "end" | "auto" = "center",
+  padding: number = 0
+): number | null {
+  return lyricsVirtualizer.getTargetScrollTop(index, align, padding);
+}
+
+export function isVirtualizerProgrammaticScrolling(): boolean {
+  return lyricsVirtualizer.isProgrammaticScrolling();
 }

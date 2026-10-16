@@ -77,6 +77,7 @@ async fn update_settings(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<KioskSettings>,
 ) -> impl IntoResponse {
+    let _lock = state.settings_lock.lock().await;
     let mut current = state.settings.write().await;
     *current = payload.clone();
 
@@ -115,6 +116,7 @@ async fn apply_update(State(state): State<Arc<SharedState>>) -> impl IntoRespons
 }
 
 async fn snooze_update(State(state): State<Arc<SharedState>>) -> impl IntoResponse {
+    let _lock = state.settings_lock.lock().await;
     let until = state.updater.snooze_24h().await;
     let mut current_settings = state.settings.write().await;
     current_settings.snoozed_update_until = Some(until);

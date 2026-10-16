@@ -4,7 +4,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::{error, info};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::{error, info, warn};
+
+static BACKUP_COUNTER: AtomicU64 = AtomicU64::new(0);
+pub const MAX_BACKUPS: usize = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KioskSettings {
@@ -97,13 +101,62 @@ impl Default for KioskSettings {
 }
 
 pub struct SettingsManager {
+    data_dir: PathBuf,
     file_path: PathBuf,
+    backup_dir: PathBuf,
 }
 
 impl SettingsManager {
     pub fn new(data_dir: &Path) -> Self {
-        let file_path = data_dir.join("syllacast_settings.json");
-        Self { file_path }
+        let data_dir_buf = data_dir.to_path_buf();
+        let file_path = data_dir_buf.join("syllacast_settings.json");
+        let backup_dir = data_dir_buf.join("backups");
+        Self {
+            data_dir: data_dir_buf,
+            file_path,
+            backup_dir,
+        }
+    }
+
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
+    pub fn backup_dir(&self) -> &Path {
+        &self.backup_dir
+    }
+
+    pub fn list_backups(&self) -> Vec<PathBuf> {
+        let mut backups = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&self.backup_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if file_name.starts_with("syllacast_settings_") && file_name.ends_with(".json") {
+                            backups.push(path);
+                        }
+                    }
+                }
+            }
+        }
+        // Chronological descending (newest first). ISO 8601 formatting guarantees
+        // that lexicographical filename sort descending matches chronological descending.
+        backups.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        backups
+    }
+
+    pub fn prune_backups(&self, keep: usize) {
+        let backups = self.list_backups();
+        if backups.len() > keep {
+            for old_backup in &backups[keep..] {
+                if let Err(e) = std::fs::remove_file(old_backup) {
+                    warn!("Failed to prune old backup {:?}: {}", old_backup, e);
+                } else {
+                    info!("Pruned old settings backup {:?}", old_backup);
+                }
+            }
+        }
     }
 
     pub fn load(&self) -> KioskSettings {
@@ -114,34 +167,129 @@ impl SettingsManager {
                         info!("Loaded kiosk settings from {:?}", self.file_path);
                         return settings;
                     }
-                    Err(e) => {
+                    Err(parse_err) => {
                         error!(
-                            "Failed to parse kiosk settings from {:?}: {}",
-                            self.file_path, e
+                            "Corrupted kiosk settings detected in {:?}: {}",
+                            self.file_path, parse_err
+                        );
+
+                        // Quarantine corrupted file to avoid data loss
+                        let now_str = chrono::Utc::now()
+                            .format("%Y%m%dT%H%M%S.%fZ")
+                            .to_string()
+                            .replace(':', "");
+                        let quarantine_path = self.data_dir.join(format!(
+                            "syllacast_settings.json.corrupt.{}",
+                            now_str
+                        ));
+                        if let Err(e) = std::fs::rename(&self.file_path, &quarantine_path) {
+                            error!(
+                                "Failed to quarantine corrupted settings to {:?}: {}",
+                                quarantine_path, e
+                            );
+                        } else {
+                            warn!("Quarantined corrupted settings to {:?}", quarantine_path);
+                        }
+
+                        // Attempt auto-recovery from backups (newest to oldest)
+                        let backups = self.list_backups();
+                        for backup_path in backups {
+                            if let Ok(backup_content) = std::fs::read_to_string(&backup_path) {
+                                if let Ok(recovered) =
+                                    serde_json::from_str::<KioskSettings>(&backup_content)
+                                {
+                                    warn!(
+                                        "Recovering kiosk settings from valid backup: {:?}",
+                                        backup_path
+                                    );
+                                    if let Err(e) = std::fs::copy(&backup_path, &self.file_path) {
+                                        error!(
+                                            "Failed to restore backup {:?} to active settings: {}",
+                                            backup_path, e
+                                        );
+                                    } else {
+                                        info!(
+                                            "Successfully restored settings from backup to {:?}",
+                                            self.file_path
+                                        );
+                                    }
+                                    return recovered;
+                                }
+                            }
+                        }
+
+                        warn!(
+                            "No valid backup found in {:?}. Initializing default settings.",
+                            self.backup_dir
                         );
                     }
                 },
-                Err(e) => {
+                Err(io_err) => {
                     error!(
                         "Failed to read kiosk settings from {:?}: {}",
-                        self.file_path, e
+                        self.file_path, io_err
                     );
+                    if io_err.kind() == std::io::ErrorKind::PermissionDenied {
+                        return KioskSettings::default();
+                    }
                 }
             }
         }
+
         let default_settings = KioskSettings::default();
         let _ = self.save(&default_settings);
         default_settings
     }
 
     pub fn save(&self, settings: &KioskSettings) -> Result<(), std::io::Error> {
-        if let Some(parent) = self.file_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        use std::io::Write;
+
+        std::fs::create_dir_all(&self.data_dir)?;
+        std::fs::create_dir_all(&self.backup_dir)?;
+
         let json = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
-        let tmp_path = self.file_path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, json)?;
-        std::fs::rename(&tmp_path, &self.file_path)?;
+
+        let seq = BACKUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let pid = std::process::id();
+        let tmp_file_path = self
+            .data_dir
+            .join(format!("syllacast_settings.json.tmp.{pid}.{seq}"));
+
+        {
+            let mut file = std::fs::File::create(&tmp_file_path)?;
+            file.write_all(json.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        // If active settings file exists and is valid JSON, archive it into backup_dir
+        if self.file_path.exists() {
+            if let Ok(existing_bytes) = std::fs::read(&self.file_path) {
+                if serde_json::from_slice::<KioskSettings>(&existing_bytes).is_ok() {
+                    let now_str = chrono::Utc::now()
+                        .format("%Y%m%dT%H%M%S.%fZ")
+                        .to_string()
+                        .replace(':', "");
+                    let backup_filename = format!(
+                        "syllacast_settings_{}_{:04}.json",
+                        now_str,
+                        seq % 10000
+                    );
+                    let backup_path = self.backup_dir.join(backup_filename);
+
+                    if let Ok(mut backup_file) = std::fs::File::create(&backup_path) {
+                        let _ = backup_file.write_all(&existing_bytes);
+                        let _ = backup_file.sync_all();
+                    }
+                }
+            }
+        }
+
+        // Atomically replace active settings file with temporary file
+        std::fs::rename(&tmp_file_path, &self.file_path)?;
+
+        // Prune backups exceeding MAX_BACKUPS (10)
+        self.prune_backups(MAX_BACKUPS);
+
         info!("Saved kiosk settings to {:?}", self.file_path);
         Ok(())
     }

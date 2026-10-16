@@ -19,6 +19,7 @@ pub struct SharedState {
     pub current_state: RwLock<AppStateSnapshot>,
     pub tx: broadcast::Sender<ServerMessage>,
     pub settings: RwLock<crate::settings::KioskSettings>,
+    pub settings_lock: tokio::sync::Mutex<()>,
     pub settings_manager: crate::settings::SettingsManager,
     pub soloist_cmd_tx: tokio::sync::mpsc::Sender<crate::soloist::models::SoloistCommand>,
     pub updater: Arc<crate::updater::UpdateService>,

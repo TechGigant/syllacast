@@ -156,6 +156,7 @@ async fn async_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         current_state: RwLock::new(initial_state),
         tx: client_tx.clone(),
         settings: RwLock::new(initial_settings),
+        settings_lock: tokio::sync::Mutex::new(()),
         settings_manager,
         soloist_cmd_tx: soloist_cmd_tx.clone(),
         updater: Arc::clone(&update_service),

@@ -530,6 +530,7 @@ async fn test_sync_lyrics_for_track_deduplication() {
         }),
         tx: tx.clone(),
         settings: RwLock::new(KioskSettings::default()),
+        settings_lock: tokio::sync::Mutex::new(()),
         settings_manager,
         soloist_cmd_tx,
         updater: Arc::new(UpdateService::new()),
@@ -987,6 +988,175 @@ fn test_settings_atomic_save_and_reload() {
 }
 
 #[test]
+fn test_settings_rotating_backups_limit_and_retention() {
+    use crate::settings::{KioskSettings, SettingsManager};
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "syllacast-test-rotating-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let manager = SettingsManager::new(&temp_dir);
+
+    // Initial save: creates active file, no backup yet
+    let mut settings = KioskSettings {
+        calibration_offset_ms: 100,
+        ..Default::default()
+    };
+    assert!(manager.save(&settings).is_ok());
+
+    let backups_initial = manager.list_backups();
+    assert_eq!(backups_initial.len(), 0);
+
+    // 15 consecutive saves: each should archive the previous valid state
+    for i in 1..=15 {
+        settings.calibration_offset_ms = 100 + i;
+        assert!(manager.save(&settings).is_ok());
+    }
+
+    // Must be capped at exactly MAX_BACKUPS (10)
+    let backups = manager.list_backups();
+    assert_eq!(backups.len(), 10);
+
+    // Verify backups are ordered chronologically descending (newest first)
+    for i in 0..backups.len() - 1 {
+        assert!(backups[i].file_name().unwrap() > backups[i + 1].file_name().unwrap());
+    }
+
+    // Clean up
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_settings_corruption_quarantine_and_backup_recovery() {
+    use crate::settings::{KioskSettings, SettingsManager};
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "syllacast-test-corrupt-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let manager = SettingsManager::new(&temp_dir);
+
+    // Save initial good settings
+    let mut good_settings = KioskSettings {
+        startup_mode: "cinema".to_string(),
+        calibration_offset_ms: 250,
+        ..Default::default()
+    };
+    assert!(manager.save(&good_settings).is_ok());
+
+    // Save second version to ensure a backup exists in backups/
+    good_settings.calibration_offset_ms = 300;
+    assert!(manager.save(&good_settings).is_ok());
+
+    assert_eq!(manager.list_backups().len(), 1);
+
+    // Now corrupt the primary active settings file with truncated invalid JSON
+    let main_file = manager.file_path();
+    std::fs::write(main_file, b"{\"startup_mode\": \"broken_json").expect("Failed to write corrupt data");
+
+    // Load should detect corruption, quarantine corrupt file, and recover from backup
+    let recovered = manager.load();
+    assert_eq!(recovered.startup_mode, "cinema");
+    assert_eq!(recovered.calibration_offset_ms, 250); // From the backup
+
+    // Active file should now be restored to valid content
+    let reloaded = manager.load();
+    assert_eq!(reloaded.calibration_offset_ms, 250);
+
+    // Check that a quarantine file was created
+    let mut found_quarantine = false;
+    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with("syllacast_settings.json.corrupt.") {
+                    found_quarantine = true;
+                    let corrupt_content = std::fs::read_to_string(entry.path()).unwrap();
+                    assert_eq!(corrupt_content, "{\"startup_mode\": \"broken_json");
+                }
+            }
+        }
+    }
+    assert!(found_quarantine, "Expected corrupt file to be quarantined");
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_settings_recovery_skips_corrupted_backup_to_older_valid() {
+    use crate::settings::{KioskSettings, SettingsManager};
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "syllacast-test-skip-corrupt-backup-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let manager = SettingsManager::new(&temp_dir);
+
+    // Save version 1 (offset = 111)
+    let s1 = KioskSettings {
+        calibration_offset_ms: 111,
+        ..Default::default()
+    };
+    assert!(manager.save(&s1).is_ok());
+
+    // Save version 2 (offset = 222) -> s1 goes to backup 1
+    let s2 = KioskSettings {
+        calibration_offset_ms: 222,
+        ..Default::default()
+    };
+    assert!(manager.save(&s2).is_ok());
+
+    // Save version 3 (offset = 333) -> s2 goes to backup 2
+    let s3 = KioskSettings {
+        calibration_offset_ms: 333,
+        ..Default::default()
+    };
+    assert!(manager.save(&s3).is_ok());
+
+    let backups = manager.list_backups();
+    assert_eq!(backups.len(), 2);
+
+    // Corrupt the newest backup (backups[0])
+    std::fs::write(&backups[0], b"corrupted backup content").unwrap();
+
+    // Corrupt primary active file
+    std::fs::write(manager.file_path(), b"corrupted active file").unwrap();
+
+    // Load should skip corrupted backup 0 and recover from backup 1 (offset 111)
+    let recovered = manager.load();
+    assert_eq!(recovered.calibration_offset_ms, 111);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_settings_corruption_fallback_to_defaults_when_no_valid_backups() {
+    use crate::settings::SettingsManager;
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "syllacast-test-fallback-defaults-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let manager = SettingsManager::new(&temp_dir);
+
+    // Create a corrupted primary file directly with no backups
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    std::fs::write(manager.file_path(), b"invalid json").unwrap();
+
+    let loaded = manager.load();
+    assert_eq!(loaded.startup_mode, "standard"); // default
+    assert_eq!(loaded.calibration_offset_ms, 0); // default
+
+    // Verify it quarantined the file and saved fresh default settings
+    assert!(manager.file_path().exists());
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn test_dismissed_update_version_suppression() {
     use crate::settings::KioskSettings;
     use crate::updater::models::UpdateNotificationDto;
@@ -1178,6 +1348,7 @@ async fn test_api_health_endpoint() {
         }),
         tx,
         settings: RwLock::new(KioskSettings::default()),
+        settings_lock: tokio::sync::Mutex::new(()),
         settings_manager,
         soloist_cmd_tx,
         updater: Arc::new(UpdateService::new()),

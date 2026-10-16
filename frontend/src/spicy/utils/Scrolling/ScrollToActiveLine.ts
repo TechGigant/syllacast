@@ -33,7 +33,12 @@ import {
 } from "../Lyrics/lyrics.ts";
 import { ScrollIntoCenterViewCSS } from "../ScrollIntoView/Center.ts";
 import { ScrollIntoTopViewCSS } from "../ScrollIntoView/Top.ts";
-import { getLyricsVirtualizer, scrollLyricsToIndex } from "../Lyrics/LyricsVirtualizer.ts";
+import {
+  getLyricsVirtualizer,
+  getLyricsVirtualizerTargetScrollTop,
+  isVirtualizerProgrammaticScrolling,
+  scrollLyricsToIndex,
+} from "../Lyrics/LyricsVirtualizer.ts";
 
 // Define intersection types that include _LineIndex
 type LyricsLineWithIndex = LyricsLine & { _LineIndex: number };
@@ -43,6 +48,8 @@ type EnhancedLyricsItem = LyricsLineWithIndex | LyricsSyllableWithIndex;
 // Define proper types for variables
 let lastLine: HTMLElement | null = null;
 let isUserScrolling = false;
+let userScrolledStatic = false;
+let isProgrammaticScrolling = false;
 let lastUserScrollTime = 0;
 let lastPosition: number = 0;
 const USER_SCROLL_COOLDOWN = 750; // 0.75 second cooldown
@@ -52,11 +59,16 @@ const USER_SCROLL_COOLDOWN = 750; // 0.75 second cooldown
 let forceScrollQueued = false;
 let smoothForceScrollQueued = false;
 
-// --- NEW: Module variables for cleanup ---
+// --- Module variables for event listeners and cleanup ---
 let currentSimpleBarInstance: any | null = null;
+let currentScrollElement: HTMLElement | null = null;
+let currentIntentRoot: HTMLElement | null = null;
 let wheelHandler: (() => void) | null = null;
 let touchMoveHandler: (() => void) | null = null;
-// --- END NEW ---
+let touchStartHandler: (() => void) | null = null;
+let scrollHandler: (() => void) | null = null;
+let pointerDownHandler: (() => void) | null = null;
+let keyDownHandler: ((e: KeyboardEvent) => void) | null = null;
 
 const wasDrasticPositionChange = (lastPosition: number, newPosition: number) => {
   const positionChange = Math.abs(newPosition - lastPosition);
@@ -105,29 +117,54 @@ function handleUserScroll(ScrollSimplebar: any | null) {
   lastUserScrollTime = performance.now();
 }
 
+function markUserScroll() {
+  handleUserScroll(currentSimpleBarInstance);
+  if ($currentLyricsType.get() === "Static") {
+    userScrolledStatic = true;
+  }
+}
+
 // Initialization function for scroll events and observers
 export function InitializeScrollEvents(ScrollSimplebar: any) {
   if (!$lyricsContainerExists.get()) return;
-  // --- NEW: Store instance and define handlers ---
+  CleanupScrollEvents();
+
   currentSimpleBarInstance = ScrollSimplebar;
-  wheelHandler = () => handleUserScroll(currentSimpleBarInstance);
-  touchMoveHandler = () => handleUserScroll(currentSimpleBarInstance);
-  // --- END NEW ---
+  const scrollElement = ScrollSimplebar?.getScrollElement() as HTMLElement | undefined;
+  if (!scrollElement) return;
+
+  currentScrollElement = scrollElement;
+  currentIntentRoot = scrollElement.closest<HTMLElement>("[data-simplebar]") ?? scrollElement;
+
+  wheelHandler = () => markUserScroll();
+  touchMoveHandler = () => markUserScroll();
+  touchStartHandler = () => markUserScroll();
+  pointerDownHandler = () => markUserScroll();
+  keyDownHandler = (e: KeyboardEvent) => {
+    if (
+      ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Space"].includes(e.code) ||
+      ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)
+    ) {
+      markUserScroll();
+    }
+  };
+  scrollHandler = () => {
+    if (isProgrammaticScrolling || isVirtualizerProgrammaticScrolling()) {
+      return;
+    }
+    markUserScroll();
+  };
 
   // Setup the observer
   setupLyricsContentObserver();
 
-  // Add scroll event listener
-  const scrollElement = ScrollSimplebar?.getScrollElement();
-  if (scrollElement && wheelHandler && touchMoveHandler) {
-    // Check handlers exist
-    // Remove potential old listeners first (optional, but safer if called multiple times)
-    scrollElement.removeEventListener("wheel", wheelHandler);
-    scrollElement.removeEventListener("touchmove", touchMoveHandler);
-    // Add new listeners
-    scrollElement.addEventListener("wheel", wheelHandler);
-    scrollElement.addEventListener("touchmove", touchMoveHandler);
-  }
+  // Add event listeners
+  scrollElement.addEventListener("wheel", wheelHandler, { passive: true });
+  scrollElement.addEventListener("touchmove", touchMoveHandler, { passive: true });
+  scrollElement.addEventListener("touchstart", touchStartHandler, { passive: true });
+  scrollElement.addEventListener("scroll", scrollHandler, { passive: true });
+  scrollElement.addEventListener("keydown", keyDownHandler, { passive: true });
+  currentIntentRoot.addEventListener("pointerdown", pointerDownHandler, { passive: true });
 }
 
 /**
@@ -240,19 +277,97 @@ const ScrollTo = (
   type: "Center" | "Top" = "Center",
   lineIndex?: number
 ) => {
-  if (lineIndex !== undefined && getLyricsVirtualizer()) {
-    // instantScroll is effectively always true in the virtualizer path
-    // (we set scrollTop directly), but passing the flag keeps the intent
-    // explicit and allows a future smooth-scroll path if needed.
-    scrollLyricsToIndex(lineIndex, type === "Top" ? "start" : "center", instantScroll, type ==="Top" ? -GetTopScrollOffset(container) : 30);
-    return;
-  }
-  if (type === "Center") {
-    ScrollIntoCenterViewCSS(container, element, -30, instantScroll);
-  } else if (type === "Top") {
-    ScrollIntoTopViewCSS(container, element, GetTopScrollOffset(container), instantScroll);
+  isProgrammaticScrolling = true;
+  try {
+    if (lineIndex !== undefined && getLyricsVirtualizer()) {
+      // instantScroll is effectively always true in the virtualizer path
+      // (we set scrollTop directly), but passing the flag keeps the intent
+      // explicit and allows a future smooth-scroll path if needed.
+      scrollLyricsToIndex(
+        lineIndex,
+        type === "Top" ? "start" : "center",
+        instantScroll,
+        type === "Top" ? -GetTopScrollOffset(container) : 30
+      );
+      return;
+    }
+    if (type === "Center") {
+      ScrollIntoCenterViewCSS(container, element, -30, instantScroll);
+    } else if (type === "Top") {
+      ScrollIntoTopViewCSS(container, element, GetTopScrollOffset(container), instantScroll);
+    }
+  } finally {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        isProgrammaticScrolling = false;
+      }, 50);
+    });
   }
 };
+
+export function isStaticNearAutoPosition(
+  container: HTMLElement,
+  targetIndex: number,
+  totalLines: number,
+  Lines?: LyricsLine[]
+): boolean {
+  if (!container || totalLines <= 0) return false;
+
+  const scrollType = GetScrollType();
+  const align = scrollType === "Top" ? "start" : "center";
+  const padding = scrollType === "Top" ? -GetTopScrollOffset(container) : 30;
+
+  const currentScrollTop = container.scrollTop;
+  const viewportHeight = container.clientHeight || 500;
+  // Tolerance: roughly 25% of viewport height (around 2-3 lines, min 120px, max 220px)
+  const tolerance = Math.max(120, Math.min(220, viewportHeight * 0.25));
+
+  // 1. Try Virtualizer precise target scroll top
+  const targetScrollTop = getLyricsVirtualizerTargetScrollTop(targetIndex, align, padding);
+  if (targetScrollTop !== null) {
+    const diff = Math.abs(currentScrollTop - targetScrollTop);
+    if (diff <= tolerance) {
+      return true;
+    }
+    // Also check if target item is within the virtualizer's mounted/visible window
+    const v = getLyricsVirtualizer();
+    if (v) {
+      const virtualItems = v.getVirtualItems();
+      if (virtualItems.length > 0) {
+        const firstIndex = virtualItems[0].index;
+        const lastIndex = virtualItems[virtualItems.length - 1].index;
+        if (targetIndex >= firstIndex && targetIndex <= lastIndex) {
+          if (diff <= tolerance * 1.5) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // 2. Fallback: DOM offsetTop check if element exists
+  const targetElem = Lines?.[targetIndex]?.HTMLElement;
+  if (targetElem && typeof targetElem.offsetTop === "number" && targetElem.offsetTop > 0) {
+    const elemTop = targetElem.offsetTop;
+    const expectedScrollTop =
+      scrollType === "Top"
+        ? elemTop - GetTopScrollOffset(container)
+        : elemTop - (viewportHeight - targetElem.offsetHeight) / 2 + 30;
+    const diff = Math.abs(currentScrollTop - Math.max(0, expectedScrollTop));
+    return diff <= tolerance;
+  }
+
+  // 3. Fallback: Proportional scroll height estimate
+  const maxScroll = Math.max(0, container.scrollHeight - viewportHeight);
+  if (maxScroll > 0) {
+    const expectedRatio = targetIndex / Math.max(1, totalLines - 1);
+    const expectedScroll = expectedRatio * maxScroll;
+    return Math.abs(currentScrollTop - expectedScroll) <= tolerance;
+  }
+
+  return true;
+}
 
 let scrolledToLastLine = false;
 let scrolledToFirstLine = false;
@@ -298,8 +413,14 @@ export function ScrollToActiveLine(ScrollSimplebar: any) {
     const now = performance.now();
     const timeSinceLastScroll = now - lastUserScrollTime;
 
-    if (forceScrollQueued || lastLine == null || wasDrasticPositionChange(lastPosition ?? 0, Position)) {
+    // Detect actual playback seek (jump backward or forward > 3s)
+    const isSeek =
+      lastPosition !== 0 &&
+      (Position < lastPosition - 1000 || Position > lastPosition + 3000);
+
+    if (forceScrollQueued || lastLine == null || isSeek) {
       forceScrollQueued = false;
+      userScrolledStatic = false;
       lastPosition = Position;
       const targetLine = Lines[targetIndex];
       lastLine = targetLine?.HTMLElement ?? null;
@@ -309,10 +430,43 @@ export function ScrollToActiveLine(ScrollSimplebar: any) {
 
     lastPosition = Position;
 
+    // Check if SimpleBar scrollbar thumb is currently being dragged
+    if (Boolean(ScrollSimplebar?.isDragging)) {
+      userScrolledStatic = true;
+      isUserScrolling = true;
+      lastUserScrollTime = now;
+      return;
+    }
+
+    if (timeSinceLastScroll > USER_SCROLL_COOLDOWN && isUserScrolling) {
+      isUserScrolling = false;
+    }
+
+    // If the user manually scrolled:
+    if (userScrolledStatic) {
+      if (isUserScrolling || timeSinceLastScroll <= USER_SCROLL_COOLDOWN) {
+        return;
+      }
+
+      // Check if user scrolled back near where auto scrolling would be
+      if (isStaticNearAutoPosition(container, targetIndex, Lines.length, Lines)) {
+        userScrolledStatic = false;
+        const lyricsContent = PageContainer?.querySelector(".LyricsContainer .LyricsContent");
+        lyricsContent?.classList.remove("HideLineBlur");
+
+        const targetLine = Lines[targetIndex];
+        const LineElem = targetLine?.HTMLElement;
+        lastLine = LineElem ?? null;
+        ScrollTo(container, LineElem ?? null, false, GetScrollType(), targetIndex);
+      }
+      return;
+    }
+
+    // Auto-scroll when user has not manually scrolled away
     if (timeSinceLastScroll > USER_SCROLL_COOLDOWN && !isUserScrolling) {
       const targetLine = Lines[targetIndex];
       const LineElem = targetLine?.HTMLElement;
-      if (lastLine !== LineElem || getLyricsVirtualizer()) {
+      if (lastLine !== LineElem) {
         lastLine = LineElem ?? null;
         ScrollTo(container, LineElem ?? null, false, GetScrollType(), targetIndex);
       }
@@ -593,6 +747,7 @@ export function ScrollToActiveLine(ScrollSimplebar: any) {
 // Function to queue a force scroll for the next frame
 export function QueueForceScroll() {
   forceScrollQueued = true;
+  userScrolledStatic = false;
 }
 
 export function QueueSmoothForceScroll() {
@@ -606,44 +761,49 @@ export function ResetLastLine() {
   lastIsLineInViewport = false;
   lastViewportCheckTime = 0;
   isUserScrolling = false;
+  userScrolledStatic = false;
   lastUserScrollTime = 0;
   lastPosition = 0;
   forceScrollQueued = false;
   smoothForceScrollQueued = false;
   scrolledToLastLine = false;
   scrolledToFirstLine = false;
-  // Also disconnect observer on reset if needed, though setup handles disconnect now
-  // lyricsContentObserver.disconnect();
 }
 
-// --- NEW: Cleanup Function ---
+// Cleanup Function
 export function CleanupScrollEvents() {
-  // Remove scroll listeners
-  const scrollElement = currentSimpleBarInstance?.getScrollElement();
-  if (scrollElement) {
-    if (wheelHandler) {
-      scrollElement.removeEventListener("wheel", wheelHandler);
-    }
-    if (touchMoveHandler) {
-      scrollElement.removeEventListener("touchmove", touchMoveHandler);
-    }
+  if (currentScrollElement) {
+    if (wheelHandler) currentScrollElement.removeEventListener("wheel", wheelHandler);
+    if (touchMoveHandler) currentScrollElement.removeEventListener("touchmove", touchMoveHandler);
+    if (touchStartHandler) currentScrollElement.removeEventListener("touchstart", touchStartHandler);
+    if (scrollHandler) currentScrollElement.removeEventListener("scroll", scrollHandler);
+    if (keyDownHandler) currentScrollElement.removeEventListener("keydown", keyDownHandler);
+  }
+  if (currentIntentRoot && pointerDownHandler) {
+    currentIntentRoot.removeEventListener("pointerdown", pointerDownHandler);
   }
 
   // Disconnect observer
   lyricsContentObserver?.disconnect();
 
-  // The window focus/resize listeners stay: they are added once at module load,
-  // and this runs on every lyrics apply, so removing them here dropped them for
-  // the rest of the session.
-
   // Reset module variables
   currentSimpleBarInstance = null;
+  currentScrollElement = null;
+  currentIntentRoot = null;
   wheelHandler = null;
   touchMoveHandler = null;
-  forceScrollQueued = false; // Reset force scroll queue
+  touchStartHandler = null;
+  scrollHandler = null;
+  pointerDownHandler = null;
+  keyDownHandler = null;
+  forceScrollQueued = false;
   smoothForceScrollQueued = false;
   scrolledToLastLine = false;
   scrolledToFirstLine = false;
-  //console.log("SpicyLyrics scroll events cleaned up."); // Optional log
+  userScrolledStatic = false;
 }
-// --- END NEW ---
+
+export const getUserScrolledStatic = () => userScrolledStatic;
+export const setUserScrolledStatic = (val: boolean) => {
+  userScrolledStatic = val;
+};

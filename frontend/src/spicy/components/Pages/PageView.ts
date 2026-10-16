@@ -481,7 +481,7 @@ Global.Event.listen("lyrics:not-apply", () => {
 Global.Event.listen("lyrics:apply", ({ Type }: { Type: string }) => {
   CleanupScrollEvents();
 
-  if (!Type || Type === "Static") return;
+  if (!Type) return;
   if (ScrollSimplebar) {
     InitializeScrollEvents(ScrollSimplebar);
     //QueueForceScroll(); // Queue a force scroll instead of directly calling with true
