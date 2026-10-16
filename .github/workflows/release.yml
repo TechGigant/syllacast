@@ -17,6 +17,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate SemVer 2.0.0 tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 -c "
+          import re, os, sys
+          ref_name = os.environ.get('REF_NAME', '')
+          tag = ref_name[1:] if ref_name.startswith('v') else ref_name
+          SEMVER_REGEX = r'^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+          if not re.match(SEMVER_REGEX, tag):
+              print(f'ERROR: Tag \"{ref_name}\" does not conform to SemVer 2.0.0', file=sys.stderr)
+              sys.exit(1)
+          print(f'Validated SemVer 2.0.0 tag \"{ref_name}\"')
+          "
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -127,10 +143,39 @@ jobs:
           sha256sum syllacast-*.tar.gz | sort -k 2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Validate SemVer 2.0.0 tag and classify release
+        id: semver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 -c "
+          import re, os, sys
+
+          ref_name = os.environ.get('REF_NAME', '')
+          tag = ref_name[1:] if ref_name.startswith('v') else ref_name
+
+          SEMVER_REGEX = r'^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+
+          match = re.match(SEMVER_REGEX, tag)
+          if not match:
+              print(f'ERROR: Tag \"{ref_name}\" does not conform to SemVer 2.0.0', file=sys.stderr)
+              sys.exit(1)
+
+          is_prerelease = bool(match.group('prerelease'))
+          output_file = os.environ.get('GITHUB_OUTPUT')
+          if output_file:
+              with open(output_file, 'a') as f:
+                  f.write(f'version={tag}\n')
+                  f.write(f'is_prerelease={\"true\" if is_prerelease else \"false\"}\n')
+                  f.write(f'make_latest={\"false\" if is_prerelease else \"true\"}\n')
+          print(f'SemVer tag \"{ref_name}\" classified: version={tag}, is_prerelease={is_prerelease}')
+          "
+
       - name: Generate rate-limit-free release-manifest.json
         working-directory: dist
         env:
           REF_NAME: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ steps.semver.outputs.is_prerelease }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
@@ -143,6 +188,7 @@ jobs:
           commit_msg_lower = commit_msg.lower()
           commit_timestamp = os.environ.get('COMMIT_TIMESTAMP', '')
           is_critical = '[security]' in commit_msg_lower or 'critical' in commit_msg_lower or 'security' in ref_name.lower()
+          is_prerelease = os.environ.get('IS_PRERELEASE') == 'true'
 
           sums = {}
           if os.path.exists('SHA256SUMS.txt'):
@@ -157,6 +203,7 @@ jobs:
               'tag_name': ref_name,
               'published_at': commit_timestamp,
               'is_critical_security_update': is_critical,
+              'is_prerelease': is_prerelease,
               'release_notes': commit_msg,
               'html_url': f'https://github.com/TechGigant/syllacast/releases/tag/{ref_name}',
               'release_notes_url': f'https://github.com/TechGigant/syllacast/releases/tag/{ref_name}',
@@ -212,6 +259,8 @@ jobs:
             dist/SHA256SUMS.txt
             dist/release-manifest.json
           generate_release_notes: true
+          prerelease: ${{ steps.semver.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ steps.semver.outputs.make_latest }}
 
           body: |
             ## Syllacast Multi-Architecture Release

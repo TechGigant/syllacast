@@ -133,7 +133,9 @@ impl SettingsManager {
                 let path = entry.path();
                 if path.is_file() {
                     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                        if file_name.starts_with("syllacast_settings_") && file_name.ends_with(".json") {
+                        if file_name.starts_with("syllacast_settings_")
+                            && file_name.ends_with(".json")
+                        {
                             backups.push(path);
                         }
                     }
@@ -178,10 +180,9 @@ impl SettingsManager {
                             .format("%Y%m%dT%H%M%S.%fZ")
                             .to_string()
                             .replace(':', "");
-                        let quarantine_path = self.data_dir.join(format!(
-                            "syllacast_settings.json.corrupt.{}",
-                            now_str
-                        ));
+                        let quarantine_path = self
+                            .data_dir
+                            .join(format!("syllacast_settings.json.corrupt.{}", now_str));
                         if let Err(e) = std::fs::rename(&self.file_path, &quarantine_path) {
                             error!(
                                 "Failed to quarantine corrupted settings to {:?}: {}",
@@ -269,11 +270,8 @@ impl SettingsManager {
                         .format("%Y%m%dT%H%M%S.%fZ")
                         .to_string()
                         .replace(':', "");
-                    let backup_filename = format!(
-                        "syllacast_settings_{}_{:04}.json",
-                        now_str,
-                        seq % 10000
-                    );
+                    let backup_filename =
+                        format!("syllacast_settings_{}_{:04}.json", now_str, seq % 10000);
                     let backup_path = self.backup_dir.join(backup_filename);
 
                     if let Ok(mut backup_file) = std::fs::File::create(&backup_path) {

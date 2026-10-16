@@ -354,7 +354,7 @@ fn test_embedded_assets_load_from_binary() {
 
 #[test]
 fn test_version_comparison_logic() {
-    use crate::updater::client::is_newer_version;
+    use crate::updater::client::{is_newer_version, is_newer_version_checked, parse_semver};
 
     assert!(is_newer_version("0.2.0", "0.1.0"));
     assert!(is_newer_version("0.1.1", "0.1.0"));
@@ -364,6 +364,104 @@ fn test_version_comparison_logic() {
     assert!(!is_newer_version("0.0.9", "0.1.0"));
     assert!(!is_newer_version("0.1.0", "0.2.0"));
     assert!(is_newer_version("0.1.0", "0.1.0-beta"));
+
+    // parse_semver tests
+    let v1 = parse_semver("v1.2.3").unwrap();
+    assert_eq!(v1, semver::Version::new(1, 2, 3));
+    let v2 = parse_semver("1.2.0-beta.1+build.42").unwrap();
+    assert_eq!(v2.major, 1);
+    assert_eq!(v2.minor, 2);
+    assert_eq!(v2.patch, 0);
+    assert_eq!(v2.pre.as_str(), "beta.1");
+    assert_eq!(v2.build.as_str(), "build.42");
+    assert!(parse_semver("not-semver").is_err());
+
+    // is_newer_version_checked error handling
+    assert!(is_newer_version_checked("bad-cand", "1.1.2").is_err());
+    assert!(is_newer_version_checked("1.1.3", "bad-curr").is_err());
+    assert!(is_newer_version_checked("1.1.3", "1.1.2").unwrap());
+}
+
+#[test]
+fn test_semver_precedence_matrix() {
+    use crate::updater::client::{is_newer_version, is_newer_version_checked};
+
+    // 1. Numeric pre-release precedence: 2 > 1
+    assert!(is_newer_version("1.2.0-beta.2", "1.2.0-beta.1"));
+    assert!(is_newer_version_checked("1.2.0-beta.2", "1.2.0-beta.1").unwrap());
+
+    // 2. Numeric pre-release precedence: 10 > 2 (not lexicographic!)
+    assert!(is_newer_version("1.2.0-beta.10", "1.2.0-beta.2"));
+    assert!(is_newer_version_checked("1.2.0-beta.10", "1.2.0-beta.2").unwrap());
+
+    // 3. Lexicographic pre-release precedence: "rc" > "beta"
+    assert!(is_newer_version("1.2.0-rc.1", "1.2.0-beta.2"));
+    assert!(is_newer_version_checked("1.2.0-rc.1", "1.2.0-beta.2").unwrap());
+
+    // 4. Normal release has higher precedence than any pre-release
+    assert!(is_newer_version("1.2.0", "1.2.0-rc.1"));
+    assert!(is_newer_version_checked("1.2.0", "1.2.0-rc.1").unwrap());
+
+    // 5. Major/Minor precedence: 1.2.0 > 1.1.2
+    assert!(is_newer_version("1.2.0-beta.1", "1.1.2"));
+    assert!(is_newer_version_checked("1.2.0-beta.1", "1.1.2").unwrap());
+
+    // 6. Reverse: lower precedence
+    assert!(!is_newer_version("1.1.2", "1.2.0-beta.1"));
+    assert!(!is_newer_version_checked("1.1.2", "1.2.0-beta.1").unwrap());
+
+    // 7. SemVer 2.0.0 §10: Build metadata MUST be ignored when determining version precedence
+    assert!(!is_newer_version("1.2.0+build.2", "1.2.0+build.1"));
+    assert!(!is_newer_version_checked("1.2.0+build.2", "1.2.0+build.1").unwrap());
+    assert!(!is_newer_version("1.2.0+linux-x86", "1.2.0"));
+    assert!(!is_newer_version_checked("1.2.0+linux-x86", "1.2.0").unwrap());
+
+    // 8. Invalid candidates
+    assert!(!is_newer_version("invalid-tag", "1.1.2"));
+    assert!(is_newer_version_checked("invalid-tag", "1.1.2").is_err());
+}
+
+#[test]
+fn test_is_eligible_for_stable() {
+    use crate::updater::client::is_eligible_for_stable;
+    use crate::updater::models::ReleaseManifest;
+    use std::collections::HashMap;
+
+    let base_manifest = ReleaseManifest {
+        version: "1.1.2".to_string(),
+        tag_name: "v1.1.2".to_string(),
+        published_at: "2026-10-16T20:00:00Z".to_string(),
+        is_critical_security_update: false,
+        is_prerelease: Some(false),
+        html_url: "https://github.com/TechGigant/syllacast/releases/tag/v1.1.2".to_string(),
+        release_notes: None,
+        release_notes_url: None,
+        targets: HashMap::new(),
+    };
+
+    // 1. Standard valid stable release
+    assert!(is_eligible_for_stable(&base_manifest).unwrap());
+
+    // 2. Backward compatibility: is_prerelease is None
+    let mut no_flag = base_manifest.clone();
+    no_flag.is_prerelease = None;
+    assert!(is_eligible_for_stable(&no_flag).unwrap());
+
+    // 3. Pre-release SemVer in version string -> Ok(false)
+    let mut beta_ver = base_manifest.clone();
+    beta_ver.version = "1.2.0-beta.1".to_string();
+    beta_ver.tag_name = "v1.2.0-beta.1".to_string();
+    assert!(!is_eligible_for_stable(&beta_ver).unwrap());
+
+    // 4. Manifest explicitly marked as is_prerelease: Some(true) -> Ok(false)
+    let mut marked_prerelease = base_manifest.clone();
+    marked_prerelease.is_prerelease = Some(true);
+    assert!(!is_eligible_for_stable(&marked_prerelease).unwrap());
+
+    // 5. Contradictory metadata: tag does not match version -> Err
+    let mut mismatch = base_manifest.clone();
+    mismatch.tag_name = "v1.1.3".to_string();
+    assert!(is_eligible_for_stable(&mismatch).is_err());
 }
 
 #[test]
@@ -991,10 +1089,8 @@ fn test_settings_atomic_save_and_reload() {
 fn test_settings_rotating_backups_limit_and_retention() {
     use crate::settings::{KioskSettings, SettingsManager};
 
-    let temp_dir = std::env::temp_dir().join(format!(
-        "syllacast-test-rotating-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("syllacast-test-rotating-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let manager = SettingsManager::new(&temp_dir);
 
@@ -1031,10 +1127,8 @@ fn test_settings_rotating_backups_limit_and_retention() {
 fn test_settings_corruption_quarantine_and_backup_recovery() {
     use crate::settings::{KioskSettings, SettingsManager};
 
-    let temp_dir = std::env::temp_dir().join(format!(
-        "syllacast-test-corrupt-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("syllacast-test-corrupt-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let manager = SettingsManager::new(&temp_dir);
 
@@ -1054,7 +1148,8 @@ fn test_settings_corruption_quarantine_and_backup_recovery() {
 
     // Now corrupt the primary active settings file with truncated invalid JSON
     let main_file = manager.file_path();
-    std::fs::write(main_file, b"{\"startup_mode\": \"broken_json").expect("Failed to write corrupt data");
+    std::fs::write(main_file, b"{\"startup_mode\": \"broken_json")
+        .expect("Failed to write corrupt data");
 
     // Load should detect corruption, quarantine corrupt file, and recover from backup
     let recovered = manager.load();

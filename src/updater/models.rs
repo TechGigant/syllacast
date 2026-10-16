@@ -22,6 +22,8 @@ pub struct ReleaseManifest {
     #[serde(default)]
     pub is_critical_security_update: bool,
     #[serde(default)]
+    pub is_prerelease: Option<bool>,
+    #[serde(default)]
     pub html_url: String,
     #[serde(default)]
     pub release_notes: Option<String>,
