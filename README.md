@@ -31,6 +31,7 @@ Built with a high-performance **Rust backend** (Axum, Tokio) and a lightweight *
 ## Getting Started & Documentation
 
 - **[Setup & Deployment Guide](SETUP.md)**: Step-by-step setup, configuration options, deployment scenarios (Desktop, Raspberry Pi/SBC appliance, Docker), and troubleshooting.
+- **[Spicy Lyrics API Key Template](https://developers.spicylyrics.org/catalog/syllacast)**: Create and obtain your API key using the official Syllacast template.
 - **[Building Instructions](BUILDING.md)**: Detailed compilation instructions for the Rust backend, Vite frontend, Docker container images, and ARM64 cross-compilation.
 - **[Configuration Template](.env.example)**: Full reference template of all available environment variables and CLI options.
 - **[Attribution & Licenses](ATTRIBUTION.md)**: Upstream credits, component licenses, and third-party dependencies.

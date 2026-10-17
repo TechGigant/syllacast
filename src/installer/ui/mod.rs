@@ -1150,7 +1150,7 @@ fn render_wizard_step4(frame: &mut Frame, area: Rect, state: &AppState) {
         (
             "Spicy Lyrics API Key (F2 toggles mask)",
             &display_key,
-            "Get key from spicylyrics.org",
+            "Template: https://developers.spicylyrics.org/catalog/syllacast",
         ),
         (
             "HTTP Port",
@@ -1203,6 +1203,15 @@ fn render_wizard_step4(frame: &mut Frame, area: Rect, state: &AppState) {
         ]));
         lines.push(Line::from(""));
     }
+
+    lines.push(Line::from(vec![
+        Span::styled("  ℹ Get your API key from template: ", theme::style_muted()),
+        Span::styled(
+            "https://developers.spicylyrics.org/catalog/syllacast",
+            Style::default().fg(theme::ACCENT_BLUE),
+        ),
+    ]));
+    lines.push(Line::from(""));
 
     if let Some(ref err) = state.error_msg {
         lines.push(Line::from(Span::styled(
@@ -1455,12 +1464,19 @@ fn render_reconfigure(frame: &mut Frame, area: Rect, state: &AppState) {
         ("Soloist Data Directory", &state.custom_data_dir),
     ];
 
-    let mut lines = Vec::new();
-    lines.push(Line::from(""));
-    lines.push(Line::from(
-        "  Update configuration values written to /opt/syllacast/.env:",
-    ));
-    lines.push(Line::from(""));
+    let mut lines = vec![
+        Line::from(""),
+        Line::from("  Update configuration values written to /opt/syllacast/.env:"),
+        Line::from(vec![
+            Span::styled("  (Template: ", theme::style_muted()),
+            Span::styled(
+                "https://developers.spicylyrics.org/catalog/syllacast",
+                Style::default().fg(theme::ACCENT_BLUE),
+            ),
+            Span::styled(")", theme::style_muted()),
+        ]),
+        Line::from(""),
+    ];
 
     for (i, (label, val)) in fields.iter().enumerate() {
         let is_active = i == state.creds_field_index;
