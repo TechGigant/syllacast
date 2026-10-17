@@ -23,7 +23,9 @@ Syllacast connects to two external components:
 ## 2. Prerequisites
 
 ### 1. Spicy Lyrics API Secret Key
-Syllacast uses the Spicy Lyrics API to retrieve time-synced syllable lyrics
+Syllacast uses the Spicy Lyrics API to retrieve time-synced syllable lyrics.
+- Obtain an API key using the official Syllacast template at: [https://developers.spicylyrics.org/catalog/syllacast](https://developers.spicylyrics.org/catalog/syllacast).
+- Once created, your API key begins with `sl_sk_...`. You can enter it during the interactive `syllacast setup` wizard or set it via `SPICY_LYRICS_SECRET_KEY` in your `.env` file.
 
 ### 2. Spotify Soloist
 Spotify Soloist is Spotify's official lightweight Connect playback engine for Linux devices and appliances.
@@ -102,7 +104,7 @@ sudo ./syllacast setup
 ```
 
 The wizard will:
-1. Prompt for and validate your Spicy Lyrics API key.
+1. Prompt for and validate your Spicy Lyrics API key (obtainable from the [Syllacast Template](https://developers.spicylyrics.org/catalog/syllacast)).
 2. Auto-detect Spotify Soloist and test local WebSocket connectivity.
 3. Configure bind address and port (defaulting to `0.0.0.0:8080`).
 4. Automatically write `/opt/syllacast/.env` (with `0600` permissions).
