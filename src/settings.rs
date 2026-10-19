@@ -43,6 +43,8 @@ pub struct WidgetInstance {
 pub struct LayoutProfile {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_aspect_ratio_any")]
+    pub target_aspect_ratio: String,
     pub widgets: Vec<WidgetInstance>,
 }
 
@@ -51,6 +53,7 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
         LayoutProfile {
             id: "default".to_string(),
             name: "Standard Kiosk".to_string(),
+            target_aspect_ratio: "any".to_string(),
             widgets: vec![
                 WidgetInstance {
                     id: "nowbar-1".to_string(),
@@ -68,9 +71,11 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
                     x: 12,
                     y: 1,
                     w: 12,
-                    h: 11,
+                    h: 12,
                     show_glass: false,
-                    config: serde_json::json!({}),
+                    config: serde_json::json!({
+                        "full_height_bleed": true
+                    }),
                 },
                 WidgetInstance {
                     id: "up_next-1".to_string(),
@@ -97,6 +102,7 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
         LayoutProfile {
             id: "living_room_tv".to_string(),
             name: "Living Room Hub".to_string(),
+            target_aspect_ratio: "any".to_string(),
             widgets: vec![
                 WidgetInstance {
                     id: "nowbar-1".to_string(),
@@ -191,6 +197,7 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
         LayoutProfile {
             id: "party".to_string(),
             name: "Party & Visualizer".to_string(),
+            target_aspect_ratio: "any".to_string(),
             widgets: vec![
                 WidgetInstance {
                     id: "nowbar-1".to_string(),
@@ -279,6 +286,7 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
         LayoutProfile {
             id: "minimal".to_string(),
             name: "Cinema Lyrics".to_string(),
+            target_aspect_ratio: "any".to_string(),
             widgets: vec![
                 WidgetInstance {
                     id: "lyrics-1".to_string(),
@@ -288,7 +296,9 @@ pub fn default_layout_profiles() -> Vec<LayoutProfile> {
                     w: 20,
                     h: 12,
                     show_glass: false,
-                    config: serde_json::json!({}),
+                    config: serde_json::json!({
+                        "full_height_bleed": true
+                    }),
                 },
                 WidgetInstance {
                     id: "clock-1".to_string(),
@@ -349,6 +359,9 @@ pub struct KioskSettings {
     #[serde(default = "default_active_profile_id")]
     pub active_profile_id: String,
 
+    #[serde(default = "default_true")]
+    pub auto_switch_aspect_ratio: bool,
+
     #[serde(default = "default_layout_profiles")]
     pub layout_profiles: Vec<LayoutProfile>,
 }
@@ -363,6 +376,10 @@ fn default_empty_object() -> serde_json::Value {
 
 fn default_active_profile_id() -> String {
     "default".to_string()
+}
+
+fn default_aspect_ratio_any() -> String {
+    "any".to_string()
 }
 
 fn default_standard() -> String {
@@ -406,6 +423,7 @@ impl Default for KioskSettings {
             dismissed_update_version: None,
             snoozed_update_until: None,
             active_profile_id: "default".to_string(),
+            auto_switch_aspect_ratio: true,
             layout_profiles: default_layout_profiles(),
         }
     }

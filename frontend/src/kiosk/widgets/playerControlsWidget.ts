@@ -14,8 +14,12 @@ import type { AppStateSnapshot } from "../../bridge/spotifyPlayer.ts";
 import type { MountedWidget, WidgetContext } from "./types.ts";
 
 export interface PlayerControlsWidgetConfig {
-  show_volume: boolean;
-  show_seek_time: boolean;
+  layout_mode: "auto" | "mini" | "single_row" | "standard";
+  show_seek_bar: "auto" | "show" | "hide" | boolean;
+  show_seek_time: "auto" | "show" | "hide" | boolean;
+  show_shuffle_repeat: "auto" | "show" | "hide" | boolean;
+  show_prev: "auto" | "show" | "hide" | boolean;
+  show_volume: "auto" | "show" | "hide" | boolean;
 }
 
 export function createPlayerControlsWidget(
@@ -23,8 +27,23 @@ export function createPlayerControlsWidget(
   ctx: WidgetContext
 ): MountedWidget {
   let config: PlayerControlsWidgetConfig = {
-    show_volume: initialConfig.show_volume !== false,
-    show_seek_time: initialConfig.show_seek_time !== false,
+    layout_mode: ["auto", "mini", "single_row", "standard"].includes(
+      initialConfig.layout_mode
+    )
+      ? initialConfig.layout_mode
+      : "auto",
+    show_seek_bar:
+      initialConfig.show_seek_bar !== undefined ? initialConfig.show_seek_bar : "auto",
+    show_seek_time:
+      initialConfig.show_seek_time !== undefined ? initialConfig.show_seek_time : "auto",
+    show_shuffle_repeat:
+      initialConfig.show_shuffle_repeat !== undefined
+        ? initialConfig.show_shuffle_repeat
+        : "auto",
+    show_prev:
+      initialConfig.show_prev !== undefined ? initialConfig.show_prev : "auto",
+    show_volume:
+      initialConfig.show_volume !== undefined ? initialConfig.show_volume : "auto",
   };
 
   const container = document.createElement("div");
@@ -37,12 +56,12 @@ export function createPlayerControlsWidget(
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: clamp(8px, 8cqh, 20px) clamp(12px, 4.5cqw, 28px);
+    padding: clamp(6px, 6cqh, 18px) clamp(10px, 4cqw, 26px);
     box-sizing: border-box;
     border-radius: inherit;
     color: #ffffff;
     user-select: none;
-    gap: clamp(6px, 8cqh, 16px);
+    gap: clamp(5px, 6cqh, 14px);
   `;
 
   let latestState: AppStateSnapshot | null = ctx.getLatestState();
@@ -50,6 +69,8 @@ export function createPlayerControlsWidget(
   let seekRatio = 0;
   let updateTimer: number | null = null;
   let isDestroyed = false;
+  let observedW = 0;
+  let observedH = 0;
 
   // DOM Elements
   const seekRow = document.createElement("div");
@@ -57,9 +78,9 @@ export function createPlayerControlsWidget(
   seekRow.style.cssText = `
     display: flex;
     align-items: center;
-    gap: clamp(8px, 2.5cqw, 14px);
+    gap: clamp(6px, 2cqw, 12px);
     width: 100%;
-    font-size: clamp(0.7rem, min(3.2cqw, 9cqh), 0.92rem);
+    font-size: clamp(0.68rem, min(3cqw, 9cqh), 0.9rem);
     font-variant-numeric: tabular-nums;
     opacity: 0.88;
   `;
@@ -67,7 +88,7 @@ export function createPlayerControlsWidget(
   const curTimeEl = document.createElement("span");
   curTimeEl.className = "ControlsCurrentTime";
   curTimeEl.textContent = "0:00";
-  curTimeEl.style.cssText = "min-width: 34px; text-align: right;";
+  curTimeEl.style.cssText = "min-width: 32px; text-align: right;";
 
   const seekTrack = document.createElement("div");
   seekTrack.className = "ControlsSeekTrack";
@@ -101,8 +122,8 @@ export function createPlayerControlsWidget(
     position: absolute;
     top: 50%;
     left: 0%;
-    width: clamp(11px, 10cqh, 15px);
-    height: clamp(11px, 10cqh, 15px);
+    width: clamp(10px, 10cqh, 14px);
+    height: clamp(10px, 10cqh, 14px);
     border-radius: 50%;
     background: #ffffff;
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
@@ -115,7 +136,7 @@ export function createPlayerControlsWidget(
   const totTimeEl = document.createElement("span");
   totTimeEl.className = "ControlsTotalTime";
   totTimeEl.textContent = "0:00";
-  totTimeEl.style.cssText = "min-width: 34px;";
+  totTimeEl.style.cssText = "min-width: 32px;";
 
   seekRow.appendChild(curTimeEl);
   seekRow.appendChild(seekTrack);
@@ -129,7 +150,7 @@ export function createPlayerControlsWidget(
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: clamp(8px, 3cqw, 18px);
+    gap: clamp(6px, 2.5cqw, 16px);
     width: 100%;
   `;
 
@@ -139,7 +160,8 @@ export function createPlayerControlsWidget(
   transportGroup.style.cssText = `
     display: flex;
     align-items: center;
-    gap: clamp(4px, 2cqw, 12px);
+    gap: clamp(3px, 1.8cqw, 10px);
+    flex-shrink: 0;
   `;
 
   // Shuffle button
@@ -148,7 +170,7 @@ export function createPlayerControlsWidget(
   shuffleBtn.title = "Shuffle";
   shuffleBtn.style.cssText = createBtnStyle(false);
   shuffleBtn.innerHTML = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/>
     </svg>
   `;
@@ -164,7 +186,7 @@ export function createPlayerControlsWidget(
   prevBtn.title = "Previous Track";
   prevBtn.style.cssText = createBtnStyle(false);
   prevBtn.innerHTML = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>
     </svg>
   `;
@@ -178,8 +200,8 @@ export function createPlayerControlsWidget(
   playBtn.className = "ControlsBtn ControlsBtn--play";
   playBtn.title = "Play / Pause";
   playBtn.style.cssText = `
-    width: clamp(34px, min(11cqw, 36cqh), 52px);
-    height: clamp(34px, min(11cqw, 36cqh), 52px);
+    width: clamp(32px, min(11cqw, 38cqh), 48px);
+    height: clamp(32px, min(11cqw, 38cqh), 48px);
     border-radius: 50%;
     background: #ffffff;
     color: #000000;
@@ -204,7 +226,7 @@ export function createPlayerControlsWidget(
   nextBtn.title = "Next Track";
   nextBtn.style.cssText = createBtnStyle(false);
   nextBtn.innerHTML = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
     </svg>
   `;
@@ -235,12 +257,13 @@ export function createPlayerControlsWidget(
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 1 135px;
-    min-width: 75px;
+    flex: 0 1 130px;
+    min-width: 70px;
   `;
 
   const speakerIcon = document.createElement("div");
-  speakerIcon.style.cssText = "display: flex; align-items: center; opacity: 0.78; cursor: pointer; flex-shrink: 0;";
+  speakerIcon.style.cssText =
+    "display: flex; align-items: center; opacity: 0.78; cursor: pointer; flex-shrink: 0;";
   speakerIcon.innerHTML = getVolumeIcon(50);
   volumeGroup.appendChild(speakerIcon);
 
@@ -251,7 +274,7 @@ export function createPlayerControlsWidget(
   volSlider.value = "50";
   volSlider.style.cssText = `
     flex: 1;
-    min-width: 50px;
+    min-width: 45px;
     height: 4px;
     accent-color: #38bdf8;
     cursor: pointer;
@@ -279,6 +302,99 @@ export function createPlayerControlsWidget(
 
   actionRow.appendChild(volumeGroup);
   container.appendChild(actionRow);
+
+  function applyResponsiveLayout() {
+    const host = container.parentElement || container;
+    const cols = parseInt(host.style.getPropertyValue("--widget-cols") || "8", 10) || 8;
+    const rows = parseInt(host.style.getPropertyValue("--widget-rows") || "2", 10) || 2;
+
+    let mode = config.layout_mode;
+    if (mode === "auto") {
+      if ((rows === 1 && cols <= 4) || (observedW > 0 && observedW < 185)) {
+        mode = "mini";
+      } else if (rows === 1 || (observedH > 0 && observedH < 76)) {
+        mode = "single_row";
+      } else {
+        mode = "standard";
+      }
+    }
+
+    const resolveTri = (
+      val: "auto" | "show" | "hide" | boolean,
+      autoDefault: boolean
+    ): boolean => {
+      if (val === "show" || val === true) return true;
+      if (val === "hide" || val === false) return false;
+      return autoDefault;
+    };
+
+    const showSeekBar = resolveTri(
+      config.show_seek_bar,
+      mode === "standard" || (mode === "single_row" && cols >= 7)
+    );
+    const showSeekTime = resolveTri(
+      config.show_seek_time,
+      showSeekBar && cols >= 5 && (observedW === 0 || observedW >= 220)
+    );
+    const showShuffleRepeat = resolveTri(
+      config.show_shuffle_repeat,
+      mode !== "mini" && cols >= 5 && (observedW === 0 || observedW >= 210)
+    );
+    const showPrev = resolveTri(
+      config.show_prev,
+      mode !== "mini" || cols >= 3
+    );
+    const showVolume = resolveTri(
+      config.show_volume,
+      mode !== "mini" && cols >= 6 && (observedW === 0 || observedW >= 255)
+    );
+
+    container.dataset.controlsMode = mode;
+
+    // Layout structure: single_row puts seekRow inside actionRow between transport and volume
+    if (mode === "single_row") {
+      container.style.flexDirection = "row";
+      container.style.alignItems = "center";
+      if (seekRow.parentElement !== actionRow) {
+        actionRow.insertBefore(seekRow, volumeGroup);
+      }
+      seekRow.style.flex = "1";
+      seekRow.style.width = "auto";
+    } else {
+      container.style.flexDirection = "column";
+      container.style.alignItems = "stretch";
+      if (seekRow.parentElement !== container) {
+        container.insertBefore(seekRow, actionRow);
+      }
+      seekRow.style.flex = "0 0 auto";
+      seekRow.style.width = "100%";
+    }
+
+    seekRow.style.display = showSeekBar ? "flex" : "none";
+    curTimeEl.style.display = showSeekTime ? "inline" : "none";
+    totTimeEl.style.display = showSeekTime ? "inline" : "none";
+    shuffleBtn.style.display = showShuffleRepeat ? "flex" : "none";
+    repeatBtn.style.display = showShuffleRepeat ? "flex" : "none";
+    prevBtn.style.display = showPrev ? "flex" : "none";
+    volumeGroup.style.display = showVolume ? "flex" : "none";
+
+    actionRow.style.justifyContent =
+      showVolume || (mode === "single_row" && showSeekBar)
+        ? "space-between"
+        : "center";
+  }
+
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            observedW = entry.contentRect.width;
+            observedH = entry.contentRect.height;
+          }
+          applyResponsiveLayout();
+        })
+      : null;
+  resizeObserver?.observe(container);
 
   // Interactive Seek Logic
   function handleSeekMove(e: PointerEvent) {
@@ -372,12 +488,33 @@ export function createPlayerControlsWidget(
 
   function updateConfig(newConfig: Record<string, any>) {
     config = {
-      show_volume: newConfig.show_volume !== false,
-      show_seek_time: newConfig.show_seek_time !== false,
+      layout_mode: ["auto", "mini", "single_row", "standard"].includes(
+        newConfig.layout_mode
+      )
+        ? newConfig.layout_mode
+        : config.layout_mode,
+      show_seek_bar:
+        newConfig.show_seek_bar !== undefined
+          ? newConfig.show_seek_bar
+          : config.show_seek_bar,
+      show_seek_time:
+        newConfig.show_seek_time !== undefined
+          ? newConfig.show_seek_time
+          : config.show_seek_time,
+      show_shuffle_repeat:
+        newConfig.show_shuffle_repeat !== undefined
+          ? newConfig.show_shuffle_repeat
+          : config.show_shuffle_repeat,
+      show_prev:
+        newConfig.show_prev !== undefined
+          ? newConfig.show_prev
+          : config.show_prev,
+      show_volume:
+        newConfig.show_volume !== undefined
+          ? newConfig.show_volume
+          : config.show_volume,
     };
-    volumeGroup.style.display = config.show_volume ? "flex" : "none";
-    curTimeEl.style.display = config.show_seek_time ? "inline" : "none";
-    totTimeEl.style.display = config.show_seek_time ? "inline" : "none";
+    applyResponsiveLayout();
   }
 
   // Apply initial config display
@@ -385,6 +522,7 @@ export function createPlayerControlsWidget(
 
   function destroy() {
     isDestroyed = true;
+    resizeObserver?.disconnect();
     if (updateTimer) {
       window.clearInterval(updateTimer);
       updateTimer = null;
@@ -405,33 +543,64 @@ export function createPlayerControlsWidget(
       color: #e2e8f0;
     `;
 
-    const liveConfig = { ...config, ...currentConfig };
+    const liveConfig: PlayerControlsWidgetConfig = { ...config, ...currentConfig };
 
-    const volGroup = document.createElement("div");
-    volGroup.style.cssText = "display: flex; align-items: center; gap: 10px;";
-    volGroup.innerHTML = `
-      <input type="checkbox" id="ctrl_volume_chk" ${liveConfig.show_volume ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer;" />
-      <label for="ctrl_volume_chk" style="cursor: pointer; font-size: 0.85rem;">Show Volume Slider</label>
+    const modeGroup = document.createElement("div");
+    modeGroup.className = "StudioFormGroup";
+    modeGroup.innerHTML = `
+      <label class="StudioFormLabel">Display Layout Mode</label>
+      <select class="StudioFormSelect ControlsModeSelect">
+        <option value="auto" ${liveConfig.layout_mode === "auto" ? "selected" : ""}>Auto (Smart Responsive by Size)</option>
+        <option value="mini" ${liveConfig.layout_mode === "mini" ? "selected" : ""}>Mini Pill (Play & Next)</option>
+        <option value="single_row" ${liveConfig.layout_mode === "single_row" ? "selected" : ""}>Single Horizontal Row</option>
+        <option value="standard" ${liveConfig.layout_mode === "standard" ? "selected" : ""}>Standard Two-Row Transport</option>
+      </select>
     `;
-    const vChk = volGroup.querySelector<HTMLInputElement>("input")!;
-    vChk.addEventListener("change", () => {
-      liveConfig.show_volume = vChk.checked;
+    const modeSel = modeGroup.querySelector<HTMLSelectElement>(".ControlsModeSelect")!;
+    modeSel.addEventListener("change", () => {
+      liveConfig.layout_mode = modeSel.value as any;
       onChange({ ...liveConfig });
     });
-    form.appendChild(volGroup);
+    form.appendChild(modeGroup);
 
-    const timeGroup = document.createElement("div");
-    timeGroup.style.cssText = "display: flex; align-items: center; gap: 10px;";
-    timeGroup.innerHTML = `
-      <input type="checkbox" id="ctrl_time_chk" ${liveConfig.show_seek_time ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer;" />
-      <label for="ctrl_time_chk" style="cursor: pointer; font-size: 0.85rem;">Show Time Counters on Seek Bar</label>
-    `;
-    const tChk = timeGroup.querySelector<HTMLInputElement>("input")!;
-    tChk.addEventListener("change", () => {
-      liveConfig.show_seek_time = tChk.checked;
-      onChange({ ...liveConfig });
-    });
-    form.appendChild(timeGroup);
+    const createTriRow = (
+      label: string,
+      key:
+        | "show_seek_bar"
+        | "show_seek_time"
+        | "show_shuffle_repeat"
+        | "show_prev"
+        | "show_volume"
+    ) => {
+      const row = document.createElement("div");
+      row.className = "StudioToggleRow";
+      const val =
+        liveConfig[key] === true
+          ? "show"
+          : liveConfig[key] === false
+          ? "hide"
+          : liveConfig[key] || "auto";
+      row.innerHTML = `
+        <span class="StudioToggleLabel">${label}</span>
+        <select class="StudioFormSelect" style="width: 140px; padding: 5px 8px;">
+          <option value="auto" ${val === "auto" ? "selected" : ""}>Auto (Smart)</option>
+          <option value="show" ${val === "show" ? "selected" : ""}>Always Show</option>
+          <option value="hide" ${val === "hide" ? "selected" : ""}>Always Hide</option>
+        </select>
+      `;
+      const sel = row.querySelector("select")!;
+      sel.addEventListener("change", () => {
+        (liveConfig as any)[key] = sel.value;
+        onChange({ ...liveConfig });
+      });
+      return row;
+    };
+
+    form.appendChild(createTriRow("Seek / Progress Bar", "show_seek_bar"));
+    form.appendChild(createTriRow("Seek Time Counters", "show_seek_time"));
+    form.appendChild(createTriRow("Shuffle & Repeat Buttons", "show_shuffle_repeat"));
+    form.appendChild(createTriRow("Previous Track Button", "show_prev"));
+    form.appendChild(createTriRow("Volume Slider", "show_volume"));
 
     return form;
   }

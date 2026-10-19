@@ -10,11 +10,15 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { MountedWidget, WidgetContext } from "./types.ts";
+import type { ElementVisibility, MountedWidget, WidgetContext } from "./types.ts";
+import { classifyWidgetDimensions } from "./types.ts";
 import { formatWifiQrPayload, renderQrSvg } from "./qrEncoder.ts";
+
+export type NoteLayoutMode = "auto" | "qr_only" | "wide_split" | "standard";
 
 export interface NoteWidgetConfig {
   mode: "note" | "wifi_qr" | "url_qr";
+  layout_mode: NoteLayoutMode;
   title: string;
   body_text: string;
   text_align: "left" | "center" | "right";
@@ -22,8 +26,20 @@ export interface NoteWidgetConfig {
   wifi_password: string;
   wifi_encryption: "WPA" | "WEP" | "nopass";
   wifi_hidden: boolean;
-  show_password_text: boolean;
+  show_title: ElementVisibility | boolean;
+  show_ssid_url: ElementVisibility | boolean;
+  show_password_text: ElementVisibility | boolean;
   qr_url: string;
+}
+
+function normalizeVisibility(
+  val: unknown,
+  fallback: ElementVisibility = "auto"
+): ElementVisibility {
+  if (val === true || val === "show") return "show";
+  if (val === false || val === "hide") return "hide";
+  if (val === "auto") return "auto";
+  return fallback;
 }
 
 export function createNoteWidget(
@@ -34,6 +50,11 @@ export function createNoteWidget(
     mode: ["note", "wifi_qr", "url_qr"].includes(initialConfig.mode)
       ? initialConfig.mode
       : "note",
+    layout_mode: ["auto", "qr_only", "wide_split", "standard"].includes(
+      initialConfig.layout_mode
+    )
+      ? initialConfig.layout_mode
+      : "auto",
     title: initialConfig.title !== undefined ? initialConfig.title : "Welcome",
     body_text:
       initialConfig.body_text !== undefined
@@ -50,7 +71,12 @@ export function createNoteWidget(
       ? initialConfig.wifi_encryption
       : "WPA",
     wifi_hidden: Boolean(initialConfig.wifi_hidden),
-    show_password_text: initialConfig.show_password_text !== false,
+    show_title: normalizeVisibility(initialConfig.show_title, "auto"),
+    show_ssid_url: normalizeVisibility(initialConfig.show_ssid_url, "auto"),
+    show_password_text: normalizeVisibility(
+      initialConfig.show_password_text,
+      "auto"
+    ),
     qr_url: initialConfig.qr_url || "",
   };
 
@@ -65,12 +91,67 @@ export function createNoteWidget(
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: clamp(10px, min(4cqw, 5cqh), 24px);
+    padding: clamp(6px, min(3.5cqw, 4.5cqh), 22px);
     box-sizing: border-box;
     border-radius: inherit;
     color: #ffffff;
     user-select: none;
   `;
+
+  function getEffectiveDims() {
+    const parent = container.parentElement;
+    const gridW = Number(parent?.dataset.gridW || container.dataset.gridW || 5);
+    const gridH = Number(parent?.dataset.gridH || container.dataset.gridH || 4);
+    const rect = container.getBoundingClientRect();
+    const widthPx = rect.width > 0 ? rect.width : gridW * 64;
+    const heightPx = rect.height > 0 ? rect.height : gridH * 64;
+    return classifyWidgetDimensions(gridW, gridH, widthPx, heightPx);
+  }
+
+  function resolveLayout(): {
+    mode: "qr_only" | "wide_split" | "standard";
+    showTitle: boolean;
+    showSsidUrl: boolean;
+    showPassword: boolean;
+  } {
+    const dims = getEffectiveDims();
+    let mode: "qr_only" | "wide_split" | "standard" = "standard";
+
+    if (config.layout_mode !== "auto") {
+      mode = config.layout_mode;
+    } else if (dims.cols <= 3 && dims.rows <= 3) {
+      mode = "qr_only";
+    } else if (dims.aspectRatio > 1.45 && dims.cols >= 4) {
+      mode = "wide_split";
+    } else {
+      mode = "standard";
+    }
+
+    const resolveFlag = (
+      vis: ElementVisibility | boolean,
+      autoDefault: boolean
+    ): boolean => {
+      const norm = normalizeVisibility(vis, "auto");
+      if (norm === "show") return true;
+      if (norm === "hide") return false;
+      return autoDefault;
+    };
+
+    const showTitle = resolveFlag(
+      config.show_title,
+      mode !== "qr_only" && (dims.rows >= 2 || mode === "wide_split")
+    );
+    const showSsidUrl = resolveFlag(
+      config.show_ssid_url,
+      mode !== "qr_only"
+    );
+    const showPassword = resolveFlag(
+      config.show_password_text,
+      mode !== "qr_only" && (dims.rows >= 3 || mode === "wide_split")
+    );
+
+    return { mode, showTitle, showSsidUrl, showPassword };
+  }
 
   function renderView() {
     container.innerHTML = "";
@@ -85,17 +166,19 @@ export function createNoteWidget(
   }
 
   function renderNoteMode() {
+    const layout = resolveLayout();
     container.style.textAlign = config.text_align;
     container.style.justifyContent = "center";
 
-    const titleHtml = config.title
-      ? `<div style="font-size: clamp(0.95rem, min(6cqw, 11cqh), 1.85rem); font-weight: 800; letter-spacing: -0.01em; margin-bottom: clamp(4px, 2.5cqh, 12px); color: #ffffff;">${escapeHtml(
-          config.title
-        )}</div>`
-      : "";
+    const titleHtml =
+      layout.showTitle && config.title
+        ? `<div style="font-size: clamp(0.85rem, min(5.8cqw, 11cqh), 1.85rem); font-weight: 800; letter-spacing: -0.01em; margin-bottom: clamp(2px, 2cqh, 10px); color: #ffffff;">${escapeHtml(
+            config.title
+          )}</div>`
+        : "";
 
     const bodyHtml = config.body_text
-      ? `<div style="font-size: clamp(0.8rem, min(4.5cqw, 8.5cqh), 1.35rem); line-height: 1.45; opacity: 0.88; max-width: 92%;">${renderSafeMarkdown(
+      ? `<div style="font-size: clamp(0.74rem, min(4.4cqw, 8.5cqh), 1.35rem); line-height: 1.4; opacity: 0.88; max-width: 95%;">${renderSafeMarkdown(
           config.body_text
         )}</div>`
       : "";
@@ -115,17 +198,22 @@ export function createNoteWidget(
   }
 
   function renderWifiMode() {
+    const layout = resolveLayout();
     container.style.textAlign = "center";
     container.style.justifyContent = "center";
 
     if (!config.wifi_ssid.trim()) {
       container.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 2.5cqh, 12px); opacity: 0.78;">
-          <svg style="width: clamp(24px, min(12cqw, 16cqh), 44px); height: clamp(24px, min(12cqw, 16cqh), 44px);" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 2cqh, 10px); opacity: 0.78;">
+          <svg style="width: clamp(20px, min(12cqw, 16cqh), 42px); height: clamp(20px, min(12cqw, 16cqh), 42px);" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
           </svg>
-          <div style="font-weight: 700; font-size: clamp(0.85rem, min(5cqw, 8cqh), 1.25rem);">Guest Wi-Fi</div>
-          <div style="font-size: clamp(0.72rem, min(3.8cqw, 6cqh), 0.95rem); opacity: 0.8; max-width: 90%;">Open widget settings (⚙) to enter Wi-Fi network name &amp; password</div>
+          <div style="font-weight: 700; font-size: clamp(0.78rem, min(5cqw, 8cqh), 1.2rem);">Guest Wi-Fi</div>
+          ${
+            layout.mode !== "qr_only"
+              ? `<div style="font-size: clamp(0.68rem, min(3.6cqw, 6cqh), 0.9rem); opacity: 0.8; max-width: 90%;">Open settings (⚙) to configure Wi-Fi</div>`
+              : ""
+          }
         </div>
       `;
       return;
@@ -142,28 +230,75 @@ export function createNoteWidget(
     try {
       qrSvg = renderQrSvg(payload);
     } catch {
-      qrSvg = `<div style="color: #f87171; font-size: 0.8rem;">QR encoding error</div>`;
+      qrSvg = `<div style="color: #f87171; font-size: 0.8rem;">QR error</div>`;
+    }
+
+    if (layout.mode === "qr_only") {
+      container.innerHTML = `
+        <div style="width: min(88cqw, 88cqh); height: min(88cqw, 88cqh); border-radius: clamp(6px, 3cqw, 14px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); background: #ffffff; padding: clamp(3px, 1.5cqw, 7px); box-sizing: border-box;">
+          ${qrSvg}
+        </div>
+      `;
+      return;
+    }
+
+    if (layout.mode === "wide_split") {
+      container.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; gap: clamp(10px, 3.5cqw, 20px); width: 100%; height: 100%;">
+          <div style="width: clamp(48px, min(42cqw, 82cqh), 200px); height: clamp(48px, min(42cqw, 82cqh), 200px); border-radius: clamp(6px, 2.5cqw, 14px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 7px); box-sizing: border-box;">
+            ${qrSvg}
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: clamp(2px, 1.5cqh, 6px); min-width: 0; flex: 1;">
+            ${
+              layout.showTitle && config.title
+                ? `<div style="font-size: clamp(0.78rem, min(4.5cqw, 12cqh), 1.25rem); font-weight: 800; color: #ffffff; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
+                    config.title
+                  )}</div>`
+                : ""
+            }
+            ${
+              layout.showSsidUrl
+                ? `<div style="font-size: clamp(0.75rem, min(4cqw, 11cqh), 1.1rem); font-weight: 700; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
+                    config.wifi_ssid
+                  )}</div>`
+                : ""
+            }
+            ${
+              layout.showPassword && config.wifi_password
+                ? `<div style="font-size: clamp(0.66rem, min(3.4cqw, 9cqh), 0.92rem); opacity: 0.82; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">Pass: ${escapeHtml(
+                    config.wifi_password
+                  )}</div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+      return;
     }
 
     container.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(4px, 2.2cqh, 12px); width: 100%; height: 100%;">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(3px, 2cqh, 10px); width: 100%; height: 100%;">
         ${
-          config.title
-            ? `<div style="font-size: clamp(0.82rem, min(5cqw, 8cqh), 1.35rem); font-weight: 700; color: #ffffff; line-height: 1.15;">${escapeHtml(
+          layout.showTitle && config.title
+            ? `<div style="font-size: clamp(0.78rem, min(4.8cqw, 7.8cqh), 1.3rem); font-weight: 700; color: #ffffff; line-height: 1.15;">${escapeHtml(
                 config.title
               )}</div>`
             : ""
         }
-        <div style="width: clamp(58px, min(54cqw, 52cqh), 240px); height: clamp(58px, min(54cqw, 52cqh), 240px); border-radius: clamp(8px, 3cqw, 16px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 8px); box-sizing: border-box;">
+        <div style="width: clamp(48px, min(56cqw, 54cqh), 240px); height: clamp(48px, min(56cqw, 54cqh), 240px); border-radius: clamp(8px, 3cqw, 16px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 8px); box-sizing: border-box;">
           ${qrSvg}
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; max-width: 100%;">
-          <span style="font-size: clamp(0.75rem, min(4.4cqw, 7cqh), 1.15rem); font-weight: 700; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
-            config.wifi_ssid
-          )}</span>
           ${
-            config.show_password_text && config.wifi_password
-              ? `<span style="font-size: clamp(0.66rem, min(3.6cqw, 5.8cqh), 0.95rem); opacity: 0.78; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">Pass: ${escapeHtml(
+            layout.showSsidUrl
+              ? `<span style="font-size: clamp(0.72rem, min(4.2cqw, 6.8cqh), 1.12rem); font-weight: 700; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
+                  config.wifi_ssid
+                )}</span>`
+              : ""
+          }
+          ${
+            layout.showPassword && config.wifi_password
+              ? `<span style="font-size: clamp(0.64rem, min(3.4cqw, 5.5cqh), 0.92rem); opacity: 0.78; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">Pass: ${escapeHtml(
                   config.wifi_password
                 )}</span>`
               : ""
@@ -174,17 +309,22 @@ export function createNoteWidget(
   }
 
   function renderUrlMode() {
+    const layout = resolveLayout();
     container.style.textAlign = "center";
     container.style.justifyContent = "center";
 
     if (!config.qr_url.trim()) {
       container.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 2.5cqh, 12px); opacity: 0.78;">
-          <svg style="width: clamp(24px, min(12cqw, 16cqh), 44px); height: clamp(24px, min(12cqw, 16cqh), 44px);" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 2cqh, 10px); opacity: 0.78;">
+          <svg style="width: clamp(20px, min(12cqw, 16cqh), 42px); height: clamp(20px, min(12cqw, 16cqh), 42px);" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
-          <div style="font-weight: 700; font-size: clamp(0.85rem, min(5cqw, 8cqh), 1.25rem);">QR Link</div>
-          <div style="font-size: clamp(0.72rem, min(3.8cqw, 6cqh), 0.95rem); opacity: 0.8; max-width: 90%;">Open widget settings (⚙) to enter target URL</div>
+          <div style="font-weight: 700; font-size: clamp(0.78rem, min(5cqw, 8cqh), 1.2rem);">QR Link</div>
+          ${
+            layout.mode !== "qr_only"
+              ? `<div style="font-size: clamp(0.68rem, min(3.6cqw, 6cqh), 0.9rem); opacity: 0.8; max-width: 90%;">Open settings (⚙) to enter URL</div>`
+              : ""
+          }
         </div>
       `;
       return;
@@ -194,26 +334,74 @@ export function createNoteWidget(
     try {
       qrSvg = renderQrSvg(config.qr_url);
     } catch {
-      qrSvg = `<div style="color: #f87171; font-size: 0.8rem;">QR encoding error</div>`;
+      qrSvg = `<div style="color: #f87171; font-size: 0.8rem;">QR error</div>`;
+    }
+
+    if (layout.mode === "qr_only") {
+      container.innerHTML = `
+        <div style="width: min(88cqw, 88cqh); height: min(88cqw, 88cqh); border-radius: clamp(6px, 3cqw, 14px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); background: #ffffff; padding: clamp(3px, 1.5cqw, 7px); box-sizing: border-box;">
+          ${qrSvg}
+        </div>
+      `;
+      return;
+    }
+
+    if (layout.mode === "wide_split") {
+      container.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; gap: clamp(10px, 3.5cqw, 20px); width: 100%; height: 100%;">
+          <div style="width: clamp(48px, min(42cqw, 82cqh), 200px); height: clamp(48px, min(42cqw, 82cqh), 200px); border-radius: clamp(6px, 2.5cqw, 14px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 7px); box-sizing: border-box;">
+            ${qrSvg}
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: clamp(2px, 1.5cqh, 6px); min-width: 0; flex: 1;">
+            ${
+              layout.showTitle && config.title
+                ? `<div style="font-size: clamp(0.78rem, min(4.5cqw, 12cqh), 1.25rem); font-weight: 800; color: #ffffff; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
+                    config.title
+                  )}</div>`
+                : ""
+            }
+            ${
+              layout.showSsidUrl
+                ? `<div style="font-size: clamp(0.68rem, min(3.6cqw, 10cqh), 0.95rem); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(
+                    config.qr_url
+                  )}</div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+      return;
     }
 
     container.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(4px, 2.2cqh, 12px); width: 100%; height: 100%;">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(3px, 2cqh, 10px); width: 100%; height: 100%;">
         ${
-          config.title
-            ? `<div style="font-size: clamp(0.82rem, min(5cqw, 8cqh), 1.35rem); font-weight: 700; color: #ffffff; line-height: 1.15;">${escapeHtml(
+          layout.showTitle && config.title
+            ? `<div style="font-size: clamp(0.78rem, min(4.8cqw, 7.8cqh), 1.3rem); font-weight: 700; color: #ffffff; line-height: 1.15;">${escapeHtml(
                 config.title
               )}</div>`
             : ""
         }
-        <div style="width: clamp(58px, min(54cqw, 52cqh), 240px); height: clamp(58px, min(54cqw, 52cqh), 240px); border-radius: clamp(8px, 3cqw, 16px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 8px); box-sizing: border-box;">
+        <div style="width: clamp(48px, min(56cqw, 54cqh), 240px); height: clamp(48px, min(56cqw, 54cqh), 240px); border-radius: clamp(8px, 3cqw, 16px); overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex-shrink: 0; background: #ffffff; padding: clamp(3px, 1.2cqw, 8px); box-sizing: border-box;">
           ${qrSvg}
         </div>
-        <div style="font-size: clamp(0.68rem, min(3.8cqw, 6cqh), 0.95rem); opacity: 0.78; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          ${escapeHtml(config.qr_url)}
-        </div>
+        ${
+          layout.showSsidUrl
+            ? `<div style="font-size: clamp(0.66rem, min(3.6cqw, 5.8cqh), 0.92rem); opacity: 0.78; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(config.qr_url)}
+              </div>`
+            : ""
+        }
       </div>
     `;
+  }
+
+  let resizeObserver: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(() => {
+      renderView();
+    });
+    resizeObserver.observe(container);
   }
 
   function updateConfig(newConfig: Record<string, any>) {
@@ -221,6 +409,11 @@ export function createNoteWidget(
       mode: ["note", "wifi_qr", "url_qr"].includes(newConfig.mode)
         ? newConfig.mode
         : config.mode,
+      layout_mode: ["auto", "qr_only", "wide_split", "standard"].includes(
+        newConfig.layout_mode
+      )
+        ? newConfig.layout_mode
+        : config.layout_mode,
       title: newConfig.title !== undefined ? newConfig.title : config.title,
       body_text:
         newConfig.body_text !== undefined ? newConfig.body_text : config.body_text,
@@ -241,9 +434,17 @@ export function createNoteWidget(
         newConfig.wifi_hidden !== undefined
           ? Boolean(newConfig.wifi_hidden)
           : config.wifi_hidden,
+      show_title:
+        newConfig.show_title !== undefined
+          ? normalizeVisibility(newConfig.show_title, "auto")
+          : config.show_title,
+      show_ssid_url:
+        newConfig.show_ssid_url !== undefined
+          ? normalizeVisibility(newConfig.show_ssid_url, "auto")
+          : config.show_ssid_url,
       show_password_text:
         newConfig.show_password_text !== undefined
-          ? Boolean(newConfig.show_password_text)
+          ? normalizeVisibility(newConfig.show_password_text, "auto")
           : config.show_password_text,
       qr_url: newConfig.qr_url !== undefined ? newConfig.qr_url : config.qr_url,
     };
@@ -251,6 +452,10 @@ export function createNoteWidget(
   }
 
   function destroy() {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
     container.innerHTML = "";
   }
 
@@ -262,14 +467,29 @@ export function createNoteWidget(
     form.style.cssText = `
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       font-size: 0.9rem;
       color: #e2e8f0;
     `;
 
-    const liveConfig = { ...config, ...currentConfig };
+    const liveConfig: NoteWidgetConfig = {
+      ...config,
+      ...currentConfig,
+      show_title: normalizeVisibility(
+        currentConfig.show_title ?? config.show_title,
+        "auto"
+      ),
+      show_ssid_url: normalizeVisibility(
+        currentConfig.show_ssid_url ?? config.show_ssid_url,
+        "auto"
+      ),
+      show_password_text: normalizeVisibility(
+        currentConfig.show_password_text ?? config.show_password_text,
+        "auto"
+      ),
+    };
 
-    // Mode Selector
+    // Card Mode Selector
     const modeGroup = document.createElement("div");
     modeGroup.innerHTML = `
       <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.85rem; color: #94a3b8;">Card Mode</label>
@@ -295,10 +515,52 @@ export function createNoteWidget(
     `;
     form.appendChild(modeGroup);
 
+    // Layout Mode Selector
+    const layoutGroup = document.createElement("div");
+    layoutGroup.innerHTML = `
+      <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.85rem; color: #94a3b8;">Display Layout Mode</label>
+      <select class="NoteLayoutSelect" style="width: 100%; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; outline: none;">
+        <option value="auto" ${liveConfig.layout_mode === "auto" ? "selected" : ""}>Auto (Smart Responsive)</option>
+        <option value="qr_only" ${liveConfig.layout_mode === "qr_only" ? "selected" : ""}>QR Code Only (Max Scannability)</option>
+        <option value="wide_split" ${liveConfig.layout_mode === "wide_split" ? "selected" : ""}>Wide Split (QR Left + Details Right)</option>
+        <option value="standard" ${liveConfig.layout_mode === "standard" ? "selected" : ""}>Standard Stacked</option>
+      </select>
+    `;
+    const layoutSelect = layoutGroup.querySelector<HTMLSelectElement>(".NoteLayoutSelect")!;
+    layoutSelect.addEventListener("change", () => {
+      liveConfig.layout_mode = layoutSelect.value as NoteLayoutMode;
+      onChange({ ...liveConfig });
+    });
+    form.appendChild(layoutGroup);
+
     // Dynamic field container
     const dynamicContainer = document.createElement("div");
-    dynamicContainer.style.cssText = "display: flex; flex-direction: column; gap: 14px;";
+    dynamicContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
     form.appendChild(dynamicContainer);
+
+    function addVisibilityRow(
+      parent: HTMLElement,
+      label: string,
+      key: "show_title" | "show_ssid_url" | "show_password_text"
+    ) {
+      const row = document.createElement("div");
+      row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 10px;";
+      const curVal = normalizeVisibility(liveConfig[key], "auto");
+      row.innerHTML = `
+        <span style="font-size: 0.84rem; color: #cbd5e1;">${label}</span>
+        <select style="padding: 5px 8px; border-radius: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; font-size: 0.82rem;">
+          <option value="auto" ${curVal === "auto" ? "selected" : ""}>Auto (Smart)</option>
+          <option value="show" ${curVal === "show" ? "selected" : ""}>Always Show</option>
+          <option value="hide" ${curVal === "hide" ? "selected" : ""}>Always Hide</option>
+        </select>
+      `;
+      const sel = row.querySelector("select")!;
+      sel.addEventListener("change", () => {
+        (liveConfig as any)[key] = sel.value as ElementVisibility;
+        onChange({ ...liveConfig });
+      });
+      parent.appendChild(row);
+    }
 
     function buildFields() {
       dynamicContainer.innerHTML = "";
@@ -366,6 +628,7 @@ export function createNoteWidget(
           });
         });
         dynamicContainer.appendChild(alignGroup);
+        addVisibilityRow(dynamicContainer, "Title Heading", "show_title");
       } else if (liveConfig.mode === "wifi_qr") {
         // Wi-Fi SSID
         const ssidGroup = document.createElement("div");
@@ -401,7 +664,7 @@ export function createNoteWidget(
         const encGroup = document.createElement("div");
         encGroup.innerHTML = `
           <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.85rem; color: #94a3b8;">Security Type</label>
-          <select class="EncSelect" style="width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; outline: none; cursor: pointer;">
+          <select class="EncSelect" style="width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; outline: none; cursor: pointer;">
             <option value="WPA" ${liveConfig.wifi_encryption === "WPA" ? "selected" : ""}>WPA / WPA2 / WPA3</option>
             <option value="WEP" ${liveConfig.wifi_encryption === "WEP" ? "selected" : ""}>WEP</option>
             <option value="nopass" ${liveConfig.wifi_encryption === "nopass" ? "selected" : ""}>No Password (Open)</option>
@@ -414,30 +677,23 @@ export function createNoteWidget(
         });
         dynamicContainer.appendChild(encGroup);
 
-        // Checkbox toggles: Show Password & Hidden
-        const togglesGroup = document.createElement("div");
-        togglesGroup.style.cssText = "display: flex; flex-direction: column; gap: 8px; margin-top: 4px;";
-        togglesGroup.innerHTML = `
-          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.85rem;">
-            <input type="checkbox" id="show_pass_chk" ${liveConfig.show_password_text ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8;" />
-            Show Password in Plaintext Below QR
-          </label>
+        addVisibilityRow(dynamicContainer, "Title Heading", "show_title");
+        addVisibilityRow(dynamicContainer, "Network Name (SSID)", "show_ssid_url");
+        addVisibilityRow(dynamicContainer, "Plaintext Password Label", "show_password_text");
+
+        const hiddenRow = document.createElement("div");
+        hiddenRow.innerHTML = `
           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.85rem;">
             <input type="checkbox" id="hidden_ssid_chk" ${liveConfig.wifi_hidden ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8;" />
             Hidden Network (SSID Not Broadcasting)
           </label>
         `;
-        const spChk = togglesGroup.querySelector<HTMLInputElement>("#show_pass_chk")!;
-        const hdChk = togglesGroup.querySelector<HTMLInputElement>("#hidden_ssid_chk")!;
-        spChk.addEventListener("change", () => {
-          liveConfig.show_password_text = spChk.checked;
-          onChange({ ...liveConfig });
-        });
+        const hdChk = hiddenRow.querySelector<HTMLInputElement>("#hidden_ssid_chk")!;
         hdChk.addEventListener("change", () => {
           liveConfig.wifi_hidden = hdChk.checked;
           onChange({ ...liveConfig });
         });
-        dynamicContainer.appendChild(togglesGroup);
+        dynamicContainer.appendChild(hiddenRow);
       } else {
         // url_qr
         const urlGroup = document.createElement("div");
@@ -453,6 +709,9 @@ export function createNoteWidget(
           onChange({ ...liveConfig });
         });
         dynamicContainer.appendChild(urlGroup);
+
+        addVisibilityRow(dynamicContainer, "Title Heading", "show_title");
+        addVisibilityRow(dynamicContainer, "URL Label Below QR", "show_ssid_url");
       }
     }
 

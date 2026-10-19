@@ -11,12 +11,15 @@
  */
 
 import type { AppStateSnapshot } from "../../bridge/spotifyPlayer.ts";
-import type { MountedWidget, WidgetContext } from "./types.ts";
+import type { ElementVisibility, MountedWidget, WidgetContext } from "./types.ts";
+import { classifyWidgetDimensions } from "./types.ts";
 
 export interface QueueWidgetConfig {
   mode: "tabs" | "upcoming_only" | "history_only" | "split";
   max_items: number; // 3 to 15 (default 8)
-  show_covers: boolean;
+  show_header: ElementVisibility | boolean;
+  show_covers: ElementVisibility | boolean;
+  show_duration: ElementVisibility | boolean;
   click_to_play: boolean;
 }
 
@@ -26,6 +29,16 @@ interface ExtendedQueueItem {
   cover_url?: string;
   uri?: string;
   duration_ms?: number;
+}
+
+function normalizeVisibility(
+  val: unknown,
+  fallback: ElementVisibility = "auto"
+): ElementVisibility {
+  if (val === true || val === "show") return "show";
+  if (val === false || val === "hide") return "hide";
+  if (val === "auto") return "auto";
+  return fallback;
 }
 
 export function createQueueWidget(
@@ -42,7 +55,9 @@ export function createQueueWidget(
       typeof initialConfig.max_items === "number"
         ? Math.max(3, Math.min(15, initialConfig.max_items))
         : 8,
-    show_covers: initialConfig.show_covers !== false,
+    show_header: normalizeVisibility(initialConfig.show_header, "auto"),
+    show_covers: normalizeVisibility(initialConfig.show_covers, "auto"),
+    show_duration: normalizeVisibility(initialConfig.show_duration, "auto"),
     click_to_play: initialConfig.click_to_play !== false,
   };
 
@@ -55,7 +70,7 @@ export function createQueueWidget(
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    padding: clamp(10px, min(3.5cqw, 4cqh), 22px) clamp(12px, min(4cqw, 4.5cqh), 24px);
+    padding: clamp(6px, min(3cqw, 3.5cqh), 20px) clamp(8px, min(3.5cqw, 4cqh), 22px);
     box-sizing: border-box;
     border-radius: inherit;
     color: #ffffff;
@@ -65,65 +80,102 @@ export function createQueueWidget(
   let activeTab: "upcoming" | "history" = "upcoming";
   let latestState: AppStateSnapshot | null = ctx.getLatestState();
 
+  function getEffectiveDims() {
+    const parent = container.parentElement;
+    const gridW = Number(parent?.dataset.gridW || container.dataset.gridW || 7);
+    const gridH = Number(parent?.dataset.gridH || container.dataset.gridH || 6);
+    const rect = container.getBoundingClientRect();
+    const widthPx = rect.width > 0 ? rect.width : gridW * 64;
+    const heightPx = rect.height > 0 ? rect.height : gridH * 64;
+    return classifyWidgetDimensions(gridW, gridH, widthPx, heightPx);
+  }
+
+  function resolveLayout(): {
+    showHeader: boolean;
+    showCovers: boolean;
+    showDuration: boolean;
+    compactRow: boolean;
+  } {
+    const dims = getEffectiveDims();
+    const resolveFlag = (
+      vis: ElementVisibility | boolean,
+      autoDefault: boolean
+    ): boolean => {
+      const norm = normalizeVisibility(vis, "auto");
+      if (norm === "show") return true;
+      if (norm === "hide") return false;
+      return autoDefault;
+    };
+
+    return {
+      showHeader: resolveFlag(config.show_header, dims.rows >= 3),
+      showCovers: resolveFlag(config.show_covers, dims.cols >= 4),
+      showDuration: resolveFlag(config.show_duration, dims.cols >= 5),
+      compactRow: dims.rows <= 3 || dims.heightPx < 180,
+    };
+  }
+
   function renderView() {
     container.innerHTML = "";
 
+    const layout = resolveLayout();
     const upcoming: ExtendedQueueItem[] = (latestState?.queue_upcoming || []) as any[];
     const history: ExtendedQueueItem[] = ((latestState as any)?.queue_history || []) as any[];
 
     // Header / Tabs
-    const headerEl = document.createElement("div");
-    headerEl.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: clamp(6px, 2.2cqh, 14px);
-      flex-shrink: 0;
-    `;
-
-    if (config.mode === "tabs") {
-      headerEl.innerHTML = `
-        <div style="display: flex; gap: 6px; background: rgba(255, 255, 255, 0.06); padding: 3px; border-radius: 9px;">
-          <button type="button" class="QueueTabBtn" data-tab="upcoming" style="padding: clamp(4px, 1cqh, 7px) clamp(10px, 2.8cqw, 16px); border-radius: 7px; border: none; font-size: clamp(0.74rem, min(3.4cqw, 3.8cqh), 0.95rem); font-weight: 600; cursor: pointer; background: ${
-            activeTab === "upcoming" ? "#38bdf8" : "transparent"
-          }; color: ${activeTab === "upcoming" ? "#000" : "rgba(255,255,255,0.72)"};">
-            Up Next (${upcoming.length})
-          </button>
-          <button type="button" class="QueueTabBtn" data-tab="history" style="padding: clamp(4px, 1cqh, 7px) clamp(10px, 2.8cqw, 16px); border-radius: 7px; border: none; font-size: clamp(0.74rem, min(3.4cqw, 3.8cqh), 0.95rem); font-weight: 600; cursor: pointer; background: ${
-            activeTab === "history" ? "#38bdf8" : "transparent"
-          }; color: ${activeTab === "history" ? "#000" : "rgba(255,255,255,0.72)"};">
-            History (${history.length})
-          </button>
-        </div>
+    if (layout.showHeader) {
+      const headerEl = document.createElement("div");
+      headerEl.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: clamp(4px, 1.8cqh, 12px);
+        flex-shrink: 0;
       `;
-      headerEl.querySelectorAll<HTMLButtonElement>(".QueueTabBtn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          activeTab = btn.dataset.tab as any;
-          renderView();
+
+      if (config.mode === "tabs") {
+        headerEl.innerHTML = `
+          <div style="display: flex; gap: 5px; background: rgba(255, 255, 255, 0.06); padding: 3px; border-radius: 9px;">
+            <button type="button" class="QueueTabBtn" data-tab="upcoming" style="padding: clamp(3px, 0.8cqh, 6px) clamp(8px, 2.4cqw, 14px); border-radius: 7px; border: none; font-size: clamp(0.7rem, min(3.2cqw, 3.6cqh), 0.9rem); font-weight: 600; cursor: pointer; background: ${
+              activeTab === "upcoming" ? "#38bdf8" : "transparent"
+            }; color: ${activeTab === "upcoming" ? "#000" : "rgba(255,255,255,0.72)"};">
+              Up Next (${upcoming.length})
+            </button>
+            <button type="button" class="QueueTabBtn" data-tab="history" style="padding: clamp(3px, 0.8cqh, 6px) clamp(8px, 2.4cqw, 14px); border-radius: 7px; border: none; font-size: clamp(0.7rem, min(3.2cqw, 3.6cqh), 0.9rem); font-weight: 600; cursor: pointer; background: ${
+              activeTab === "history" ? "#38bdf8" : "transparent"
+            }; color: ${activeTab === "history" ? "#000" : "rgba(255,255,255,0.72)"};">
+              History (${history.length})
+            </button>
+          </div>
+        `;
+        headerEl.querySelectorAll<HTMLButtonElement>(".QueueTabBtn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            activeTab = btn.dataset.tab as any;
+            renderView();
+          });
         });
-      });
-    } else if (config.mode === "upcoming_only") {
-      headerEl.innerHTML = `
-        <div style="font-size: clamp(0.76rem, min(3.6cqw, 4cqh), 1rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
-          Up Next · ${upcoming.length}
-        </div>
-      `;
-    } else if (config.mode === "history_only") {
-      headerEl.innerHTML = `
-        <div style="font-size: clamp(0.76rem, min(3.6cqw, 4cqh), 1rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
-          Recently Played · ${history.length}
-        </div>
-      `;
-    } else {
-      // Split mode
-      headerEl.innerHTML = `
-        <div style="font-size: clamp(0.76rem, min(3.6cqw, 4cqh), 1rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
-          Queue &amp; History
-        </div>
-      `;
-    }
+      } else if (config.mode === "upcoming_only") {
+        headerEl.innerHTML = `
+          <div style="font-size: clamp(0.72rem, min(3.4cqw, 3.8cqh), 0.95rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
+            Up Next · ${upcoming.length}
+          </div>
+        `;
+      } else if (config.mode === "history_only") {
+        headerEl.innerHTML = `
+          <div style="font-size: clamp(0.72rem, min(3.4cqw, 3.8cqh), 0.95rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
+            Recently Played · ${history.length}
+          </div>
+        `;
+      } else {
+        headerEl.innerHTML = `
+          <div style="font-size: clamp(0.72rem, min(3.4cqw, 3.8cqh), 0.95rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72;">
+            Queue &amp; History
+          </div>
+        `;
+      }
 
-    container.appendChild(headerEl);
+      container.appendChild(headerEl);
+    }
 
     // List Container
     const listScroll = document.createElement("div");
@@ -133,46 +185,68 @@ export function createQueueWidget(
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: clamp(5px, 1.6cqh, 10px);
+      gap: ${layout.compactRow ? "4px" : "clamp(5px, 1.5cqh, 9px)"};
       padding-right: 4px;
     `;
 
     if (config.mode === "split") {
-      // Split view: Upcoming then History
-      renderSection(listScroll, "Up Next", upcoming.slice(0, config.max_items));
-      renderSection(listScroll, "Recently Played", history.slice(0, config.max_items));
-    } else if (config.mode === "upcoming_only" || (config.mode === "tabs" && activeTab === "upcoming")) {
-      renderItems(listScroll, upcoming.slice(0, config.max_items), "No upcoming songs in queue");
+      renderSection(listScroll, "Up Next", upcoming.slice(0, config.max_items), layout);
+      renderSection(listScroll, "Recently Played", history.slice(0, config.max_items), layout);
+    } else if (
+      config.mode === "upcoming_only" ||
+      (config.mode === "tabs" && activeTab === "upcoming")
+    ) {
+      renderItems(
+        listScroll,
+        upcoming.slice(0, config.max_items),
+        "No upcoming songs in queue",
+        layout
+      );
     } else {
-      renderItems(listScroll, history.slice(0, config.max_items), "No playback history yet");
+      renderItems(
+        listScroll,
+        history.slice(0, config.max_items),
+        "No playback history yet",
+        layout
+      );
     }
 
     container.appendChild(listScroll);
   }
 
-  function renderSection(parent: HTMLElement, title: string, items: ExtendedQueueItem[]) {
+  function renderSection(
+    parent: HTMLElement,
+    title: string,
+    items: ExtendedQueueItem[],
+    layout: ReturnType<typeof resolveLayout>
+  ) {
     const secHeader = document.createElement("div");
     secHeader.style.cssText = `
-      font-size: clamp(0.68rem, min(3.2cqw, 3.5cqh), 0.88rem);
+      font-size: clamp(0.66rem, min(3cqw, 3.2cqh), 0.85rem);
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       opacity: 0.58;
-      margin-top: 8px;
+      margin-top: 6px;
       margin-bottom: 2px;
     `;
     secHeader.textContent = `${title} (${items.length})`;
     parent.appendChild(secHeader);
-    renderItems(parent, items, `No ${title.toLowerCase()}`);
+    renderItems(parent, items, `No ${title.toLowerCase()}`, layout);
   }
 
-  function renderItems(parent: HTMLElement, items: ExtendedQueueItem[], emptyMsg: string) {
+  function renderItems(
+    parent: HTMLElement,
+    items: ExtendedQueueItem[],
+    emptyMsg: string,
+    layout: ReturnType<typeof resolveLayout>
+  ) {
     if (!items || items.length === 0) {
       const emptyEl = document.createElement("div");
       emptyEl.style.cssText = `
-        padding: 20px 0;
+        padding: 12px 0;
         text-align: center;
-        font-size: clamp(0.76rem, min(3.4cqw, 3.8cqh), 0.95rem);
+        font-size: clamp(0.72rem, min(3.4cqw, 3.8cqh), 0.92rem);
         opacity: 0.5;
         font-style: italic;
       `;
@@ -189,9 +263,9 @@ export function createQueueWidget(
       row.style.cssText = `
         display: flex;
         align-items: center;
-        gap: clamp(8px, 2.8cqw, 14px);
-        padding: clamp(5px, 1.5cqh, 10px) clamp(8px, 2.5cqw, 14px);
-        border-radius: 10px;
+        gap: clamp(6px, 2.4cqw, 12px);
+        padding: ${layout.compactRow ? "4px 8px" : "clamp(4px, 1.4cqh, 9px) clamp(8px, 2.2cqw, 12px)"};
+        border-radius: 9px;
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.05);
         transition: background 0.15s ease, transform 0.12s ease;
@@ -213,14 +287,13 @@ export function createQueueWidget(
         });
       }
 
-      // Thumbnail
-      if (config.show_covers) {
+      if (layout.showCovers) {
         const coverEl = document.createElement("img");
         coverEl.className = "QueueItemCover";
         coverEl.style.cssText = `
-          width: clamp(32px, min(10.5cqw, 11cqh), 48px);
-          height: clamp(32px, min(10.5cqw, 11cqh), 48px);
-          border-radius: 7px;
+          width: ${layout.compactRow ? "26px" : "clamp(28px, min(9.5cqw, 10cqh), 44px)"};
+          height: ${layout.compactRow ? "26px" : "clamp(28px, min(9.5cqw, 10cqh), 44px)"};
+          border-radius: 6px;
           object-fit: cover;
           background: rgba(255, 255, 255, 0.06);
           flex-shrink: 0;
@@ -230,7 +303,6 @@ export function createQueueWidget(
         row.appendChild(coverEl);
       }
 
-      // Text Info
       const textCol = document.createElement("div");
       textCol.style.cssText = `
         flex: 1;
@@ -240,20 +312,19 @@ export function createQueueWidget(
         gap: 1px;
       `;
       textCol.innerHTML = `
-        <span style="font-size: clamp(0.78rem, min(3.6cqw, 4cqh), 1.02rem); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        <span style="font-size: clamp(0.74rem, min(3.5cqw, 3.8cqh), 0.98rem); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
           ${escapeHtml(item.title || "Unknown Track")}
         </span>
-        <span style="font-size: clamp(0.68rem, min(3.1cqw, 3.4cqh), 0.88rem); opacity: 0.68; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        <span style="font-size: clamp(0.65rem, min(3cqw, 3.2cqh), 0.84rem); opacity: 0.68; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
           ${escapeHtml(item.artist || "")}
         </span>
       `;
       row.appendChild(textCol);
 
-      // Duration (if available)
-      if (item.duration_ms && item.duration_ms > 0) {
+      if (layout.showDuration && item.duration_ms && item.duration_ms > 0) {
         const durEl = document.createElement("span");
         durEl.style.cssText = `
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           opacity: 0.6;
           font-variant-numeric: tabular-nums;
           flex-shrink: 0;
@@ -264,6 +335,14 @@ export function createQueueWidget(
 
       parent.appendChild(row);
     }
+  }
+
+  let resizeObserver: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(() => {
+      renderView();
+    });
+    resizeObserver.observe(container);
   }
 
   function updateConfig(newConfig: Record<string, any>) {
@@ -277,10 +356,18 @@ export function createQueueWidget(
         typeof newConfig.max_items === "number"
           ? Math.max(3, Math.min(15, newConfig.max_items))
           : config.max_items,
+      show_header:
+        newConfig.show_header !== undefined
+          ? normalizeVisibility(newConfig.show_header, "auto")
+          : config.show_header,
       show_covers:
         newConfig.show_covers !== undefined
-          ? Boolean(newConfig.show_covers)
+          ? normalizeVisibility(newConfig.show_covers, "auto")
           : config.show_covers,
+      show_duration:
+        newConfig.show_duration !== undefined
+          ? normalizeVisibility(newConfig.show_duration, "auto")
+          : config.show_duration,
       click_to_play:
         newConfig.click_to_play !== undefined
           ? Boolean(newConfig.click_to_play)
@@ -295,6 +382,10 @@ export function createQueueWidget(
   }
 
   function destroy() {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
     container.innerHTML = "";
   }
 
@@ -306,12 +397,27 @@ export function createQueueWidget(
     form.style.cssText = `
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       font-size: 0.9rem;
       color: #e2e8f0;
     `;
 
-    const liveConfig = { ...config, ...currentConfig };
+    const liveConfig: QueueWidgetConfig = {
+      ...config,
+      ...currentConfig,
+      show_header: normalizeVisibility(
+        currentConfig.show_header ?? config.show_header,
+        "auto"
+      ),
+      show_covers: normalizeVisibility(
+        currentConfig.show_covers ?? config.show_covers,
+        "auto"
+      ),
+      show_duration: normalizeVisibility(
+        currentConfig.show_duration ?? config.show_duration,
+        "auto"
+      ),
+    };
 
     // Mode Selector
     const modeGroup = document.createElement("div");
@@ -371,19 +477,32 @@ export function createQueueWidget(
     });
     form.appendChild(maxGroup);
 
-    // Show Covers Toggle
-    const coversGroup = document.createElement("div");
-    coversGroup.style.cssText = "display: flex; align-items: center; gap: 10px;";
-    coversGroup.innerHTML = `
-      <input type="checkbox" id="queue_covers_chk" ${liveConfig.show_covers ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer;" />
-      <label for="queue_covers_chk" style="cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">Show Album Cover Thumbnails</label>
-    `;
-    const cChk = coversGroup.querySelector<HTMLInputElement>("input")!;
-    cChk.addEventListener("change", () => {
-      liveConfig.show_covers = cChk.checked;
-      onChange({ ...liveConfig });
-    });
-    form.appendChild(coversGroup);
+    function addVisibilitySelect(
+      label: string,
+      key: "show_header" | "show_covers" | "show_duration"
+    ) {
+      const row = document.createElement("div");
+      row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 10px;";
+      const curVal = normalizeVisibility(liveConfig[key], "auto");
+      row.innerHTML = `
+        <span style="font-size: 0.84rem; color: #cbd5e1;">${label}</span>
+        <select style="padding: 5px 8px; border-radius: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; font-size: 0.82rem;">
+          <option value="auto" ${curVal === "auto" ? "selected" : ""}>Auto (Smart)</option>
+          <option value="show" ${curVal === "show" ? "selected" : ""}>Always Show</option>
+          <option value="hide" ${curVal === "hide" ? "selected" : ""}>Always Hide</option>
+        </select>
+      `;
+      const sel = row.querySelector("select")!;
+      sel.addEventListener("change", () => {
+        (liveConfig as any)[key] = sel.value as ElementVisibility;
+        onChange({ ...liveConfig });
+      });
+      form.appendChild(row);
+    }
+
+    addVisibilitySelect("Header / Tab Bar", "show_header");
+    addVisibilitySelect("Album Cover Thumbnails", "show_covers");
+    addVisibilitySelect("Track Duration", "show_duration");
 
     // Click to Play Toggle
     const clickGroup = document.createElement("div");

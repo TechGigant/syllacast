@@ -64,6 +64,12 @@ export function createTestElement(tag: string): any {
     setProperty(k: string, v: string) {
       this[k] = v;
     },
+    getPropertyValue(k: string) {
+      return this[k] ?? "";
+    },
+    removeProperty(k: string) {
+      delete this[k];
+    },
   };
   let rawCssText = "";
   Object.defineProperty(styleObj, "cssText", {
@@ -93,7 +99,21 @@ export function createTestElement(tag: string): any {
     children: [] as any[],
     parentElement: null as any,
     isContentEditable: false,
+    clientWidth: 1920,
+    clientHeight: 1080,
     style: styleObj,
+    getBoundingClientRect() {
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+      };
+    },
     classList: {
       add(...tokens: string[]) {
         tokens.forEach((t) => t && classes.add(t));
@@ -260,9 +280,34 @@ export function createTestElement(tag: string): any {
   return el;
 }
 
+if (typeof globalThis.KeyboardEvent === "undefined") {
+  (globalThis as any).KeyboardEvent = class {
+    type: string;
+    key: string;
+    shiftKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    altKey: boolean;
+    target: any;
+    constructor(type: string, init: Record<string, any> = {}) {
+      this.type = type;
+      this.key = init.key || "";
+      this.shiftKey = Boolean(init.shiftKey);
+      this.ctrlKey = Boolean(init.ctrlKey);
+      this.metaKey = Boolean(init.metaKey);
+      this.altKey = Boolean(init.altKey);
+      this.target = init.target || null;
+    }
+    preventDefault() {}
+    stopPropagation() {}
+  };
+}
+
 if (typeof globalThis.window === "undefined") {
   const listeners: Record<string, Function[]> = {};
   (globalThis as any).window = {
+    innerWidth: 1920,
+    innerHeight: 1080,
     location: {
       protocol: "http:",
       host: "localhost:8080",
@@ -286,6 +331,11 @@ if (typeof globalThis.window === "undefined") {
       if (listeners[event]) {
         listeners[event] = listeners[event].filter((fn) => fn !== cb);
       }
+    },
+    dispatchEvent: (evt: any) => {
+      const cbs = listeners[evt.type] || [];
+      cbs.forEach((cb) => cb(evt));
+      return true;
     },
     matchMedia: () => ({ matches: false }),
     _spicy_lyrics: {},

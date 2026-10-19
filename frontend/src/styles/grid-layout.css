@@ -71,19 +71,19 @@
   display: none !important;
 }
 
-/* Universal dark frosted liquid glass card chrome */
+/* Universal bright frosted liquid glass card chrome */
 .KioskGridWidget--glass {
-  background: rgba(16, 18, 26, 0.42) !important;
-  backdrop-filter: blur(22px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(160%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.32), inset 0 -1px 0 rgba(255, 255, 255, 0.14) !important;
   border-radius: 20px !important;
   overflow: hidden !important;
 }
 
 /* ==========================================================================
-   NowBar Component Adaptation
+   NowBar Component Adaptation & Smart Responsive Layout Modes
    ========================================================================== */
 
 #SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget {
@@ -101,7 +101,7 @@
   align-items: center !important;
   box-sizing: border-box !important;
   container-type: size !important;
-  z-index: 2 !important;
+  z-index: 4;
   transform: none !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -116,10 +116,7 @@
   align-items: center !important;
 }
 
-/* Scale NowBar Header and square MediaBox concentrically inside the NowBar grid cell
-   so MediaBox, Timeline, and Metadata share the exact same width and alignment.
-   Using container-type: inline-size on .Header ensures cqw inside .MediaBox, .Timeline,
-   and .Metadata resolves against .Header's width (and never against .Metadata's short height). */
+/* Standard vertical layout */
 #SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget .Header {
   --header-size: min(88cqw, 70cqh);
   --default-font-size: clamp(0.85rem, 3.2cqw, 2.4rem);
@@ -151,6 +148,73 @@
   height: 13cqh !important;
 }
 
+/* Compact vertical mode (hides timeline so cover + title/artist fit smaller vertical boxes) */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-compact .Header {
+  --header-size: min(90cqw, 78cqh);
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-compact .Header > .Timeline {
+  display: none !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-compact .Header .Metadata {
+  margin-top: 3.5cqw !important;
+  height: auto !important;
+}
+
+/* Cover-only mode (small square badge) */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-cover-only .Header {
+  --header-size: min(94cqw, 94cqh);
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-cover-only .Header > .Timeline,
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-cover-only .Header .Metadata {
+  display: none !important;
+}
+
+/* Horizontal bar mode (wide aspect ratio strip: cover on left, metadata + timeline on right) */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-horizontal .Header {
+  width: 94cqw !important;
+  height: 88cqh !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: clamp(10px, 3cqw, 24px) !important;
+  container-type: size !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-horizontal .Header .MediaBox {
+  width: min(84cqh, 34cqw) !important;
+  height: min(84cqh, 34cqw) !important;
+  flex-shrink: 0 !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-horizontal .Header .Metadata {
+  width: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  align-items: flex-start !important;
+  text-align: left !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--layout-horizontal .Header > .Timeline {
+  width: clamp(110px, 32cqw, 280px) !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+/* Individual element visibility overrides on NowBar */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--hide-cover .Header .MediaBox {
+  display: none !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--hide-timeline .Header > .Timeline {
+  display: none !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--hide-title .Header .Metadata .SongName {
+  display: none !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .NowBar.KioskGridWidget.NowBar--hide-artist .Header .Metadata .Artists {
+  display: none !important;
+}
+
 /* Center NowBar in the middle of the screen when no lyrics are available
    (unless disabled in NowBar widget settings or while in Edit Mode) */
 #SpicyLyricsPage.GridLayoutActive:not(.EditModeActive) .ContentBox.LyricsHidden .NowBar.KioskGridWidget:not(.NowBar--keep-position) {
@@ -160,7 +224,7 @@
 }
 
 /* ==========================================================================
-   LyricsContainer Component Adaptation
+   LyricsContainer Component Adaptation & Full-Height Bleed
    ========================================================================== */
 
 #SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget {
@@ -172,11 +236,37 @@
   width: 100% !important;
   height: 100% !important;
   container-type: size !important;
-  z-index: 2 !important;
+  z-index: 2;
   overflow: hidden !important;
   box-sizing: border-box !important;
   display: flex !important;
   flex-direction: column !important;
+}
+
+/* Full-Height Vertical Bleed: lets Lyrics extend edge-to-edge from 0px (top) to 100vh (bottom),
+   bypassing .ContentBox's 16px top and 38px bottom padding so lyrics travel the full screen height */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget.LyricsContainer--bleed-vertical {
+  margin-top: -16px !important;
+  margin-bottom: -38px !important;
+  height: calc(100% + 54px) !important;
+}
+
+/* Custom Lyrics Font Scale */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget .LyricsContent .SpicyLyricsScrollContainer {
+  font-size: calc(var(--DefaultLyricsSize, 1rem) * var(--CustomLyricsScale, 1)) !important;
+}
+
+/* Custom Fade Mask Sizes */
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget[data-fade-mask="none"] .LyricsContent {
+  --BlurGradientSize: 0px !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget[data-fade-mask="small"] .LyricsContent {
+  --BlurGradientSize: 32px !important;
+}
+#SpicyLyricsPage.GridLayoutActive .ContentBox .LyricsContainer.KioskGridWidget[data-fade-mask="large"] .LyricsContent {
+  --BlurGradientSize: 120px !important;
 }
 
 /* Hide LyricsContainer when NowBar centers on no-lyrics tracks (unless NowBar--keep-position is set or Edit Mode is active) */
@@ -229,12 +319,12 @@
   right: auto !important;
   bottom: auto !important;
   width: fit-content !important;
-  min-width: 112px !important;
+  min-width: 84px !important;
   max-width: 100% !important;
   height: fit-content !important;
   max-height: 100% !important;
-  font-size: clamp(0.95rem, calc(min(var(--widget-rows, 1) * 1.45vh, var(--widget-cols, 3) * 0.72vw)), 3.2rem) !important;
-  padding: 0.38em 1.05em !important;
+  font-size: clamp(0.95rem, calc(min(var(--widget-rows, 1) * 1.65vh, var(--widget-cols, 3) * 0.85vw)), 2.8rem) !important;
+  padding: 6px 16px !important;
   border-radius: 9999px !important;
   align-self: start !important;
   justify-self: start !important;
@@ -246,15 +336,58 @@
   box-sizing: border-box !important;
   transform: none !important;
   opacity: 1 !important;
+  overflow: hidden !important;
+  z-index: 8;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskClock--has-date {
+  padding: 4px 14px !important;
+  border-radius: 16px !important;
+  font-size: clamp(0.86rem, calc(min(var(--widget-rows, 1) * 1.35vh, var(--widget-cols, 3) * 0.8vw)), 2.2rem) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="center"] {
+  justify-self: center !important;
+  align-self: center !important;
+}
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="right"] {
+  justify-self: end !important;
+  align-self: start !important;
+}
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="stretch"],
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskClock--mode-expanded {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  justify-self: stretch !important;
+  align-self: stretch !important;
+  border-radius: 18px !important;
+  padding: 4px 12px !important;
+  container-type: size !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="stretch"] .KioskClockText,
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskClock--mode-expanded .KioskClockText {
+  font-size: clamp(0.95rem, min(17cqw, 44cqh), 3.4rem) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="stretch"].KioskClock--has-date .KioskClockText,
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskClock--mode-expanded.KioskClock--has-date .KioskClockText {
+  font-size: clamp(0.84rem, min(15.5cqw, 33cqh), 2.8rem) !important;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget[data-clock-align="stretch"].KioskClock--has-date .KioskClockDate,
+#SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskClock--mode-expanded.KioskClock--has-date .KioskClockDate {
+  font-size: clamp(0.6rem, min(9.5cqw, 20cqh), 1.25rem) !important;
 }
 
 #SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget.KioskGridWidget--glass {
-  background: rgba(255, 255, 255, 0.08) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
-  border-radius: 9999px !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.32) !important;
 }
 
 #SpicyLyricsPage.GridLayoutActive .KioskClock.KioskGridWidget:not(.KioskGridWidget--glass) {
@@ -273,10 +406,11 @@
   right: auto !important;
   bottom: auto !important;
   width: fit-content !important;
-  min-width: calc(210px * var(--upnext-scale)) !important;
-  max-width: min(calc(310px * var(--upnext-scale)), 100%) !important;
+  min-width: min(calc(200px * var(--upnext-scale)), 100%) !important;
+  max-width: 100% !important;
   height: fit-content !important;
-  max-height: 100% !important;
+  min-height: calc(60px * var(--upnext-scale)) !important;
+  max-height: none !important;
   gap: calc(12px * var(--upnext-scale)) !important;
   padding: calc(8px * var(--upnext-scale)) calc(14px * var(--upnext-scale)) calc(8px * var(--upnext-scale)) calc(10px * var(--upnext-scale)) !important;
   border-radius: calc(14px * var(--upnext-scale)) !important;
@@ -285,6 +419,35 @@
   container-type: normal !important;
   box-sizing: border-box !important;
   transform: none !important;
+  z-index: 8;
+}
+
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget[data-upnext-align="left"] {
+  justify-self: start !important;
+}
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget[data-upnext-align="center"] {
+  justify-self: center !important;
+}
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget[data-upnext-align="stretch"]:not(.KioskUpNext--mode-multi_track) {
+  width: 100% !important;
+  height: fit-content !important;
+  min-height: calc(60px * var(--upnext-scale)) !important;
+  max-width: none !important;
+  max-height: none !important;
+  justify-self: stretch !important;
+  align-self: center !important;
+  border-radius: calc(14px * var(--upnext-scale)) !important;
+  container-type: normal !important;
+}
+#SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget.KioskUpNext--mode-multi_track {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  justify-self: stretch !important;
+  align-self: stretch !important;
+  border-radius: 18px !important;
+  container-type: size !important;
 }
 
 #SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget .KioskUpNextThumb {
@@ -302,12 +465,11 @@
 }
 
 #SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget.KioskGridWidget--glass {
-  background: rgba(255, 255, 255, 0.08) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
-  border-radius: calc(14px * var(--upnext-scale)) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(160%) brightness(1.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.32) !important;
 }
 
 #SpicyLyricsPage.GridLayoutActive .KioskUpNext.KioskGridWidget:not(.KioskGridWidget--glass) {
@@ -318,7 +480,7 @@
   box-shadow: none !important;
 }
 
-/* Keep Clock and UpNext at their exact fit-content size in Edit Mode while ensuring visibility and floating edit bar */
+/* In Edit Mode, ensure Clock and UpNext remain visible and interactive even when no next track is queued */
 #SpicyLyricsPage.GridLayoutActive.EditModeActive .KioskClock.KioskGridWidget,
 #SpicyLyricsPage.GridLayoutActive.EditModeActive .KioskUpNext.KioskGridWidget {
   opacity: 1 !important;
@@ -329,23 +491,6 @@
 /* ==========================================================================
    Responsive Container-Query Rules for Dynamic Widgets
    ========================================================================== */
-
-/* Hide Weather 3-day forecast row automatically if widget cell is resized very short */
-@container (max-height: 155px) {
-  .KioskWeatherWidget .WeatherForecastRow {
-    display: none !important;
-  }
-}
-
-/* Hide PlayerControls volume group automatically if widget cell is resized very narrow */
-@container (max-width: 250px) {
-  .KioskPlayerControlsWidget .ControlsVolumeGroup {
-    display: none !important;
-  }
-  .KioskPlayerControlsWidget .ControlsActionRow {
-    justify-content: center !important;
-  }
-}
 
 /* Sleek translucent scrollbar inside Extended Queue widget */
 .KioskQueueWidget .QueueListScroll::-webkit-scrollbar {
@@ -371,5 +516,3 @@
 .KioskGridWidget.KioskWidget--hidden {
   display: none !important;
 }
-
-

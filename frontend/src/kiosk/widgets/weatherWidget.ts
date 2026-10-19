@@ -17,7 +17,11 @@ export interface WeatherWidgetConfig {
   latitude: number;
   longitude: number;
   unit: "celsius" | "fahrenheit";
-  show_forecast: boolean;
+  layout_mode: "auto" | "mini_badge" | "compact" | "wide_split" | "standard";
+  show_location: "auto" | "show" | "hide" | boolean;
+  show_condition: "auto" | "show" | "hide" | boolean;
+  show_wind_humidity: "auto" | "show" | "hide" | boolean;
+  show_forecast: "auto" | "show" | "hide" | boolean;
 }
 
 interface WeatherData {
@@ -44,7 +48,21 @@ export function createWeatherWidget(
     latitude: typeof initialConfig.latitude === "number" ? initialConfig.latitude : 52.52,
     longitude: typeof initialConfig.longitude === "number" ? initialConfig.longitude : 13.41,
     unit: initialConfig.unit === "fahrenheit" ? "fahrenheit" : "celsius",
-    show_forecast: initialConfig.show_forecast !== false,
+    layout_mode: ["auto", "mini_badge", "compact", "wide_split", "standard"].includes(
+      initialConfig.layout_mode
+    )
+      ? initialConfig.layout_mode
+      : "auto",
+    show_location:
+      initialConfig.show_location !== undefined ? initialConfig.show_location : "auto",
+    show_condition:
+      initialConfig.show_condition !== undefined ? initialConfig.show_condition : "auto",
+    show_wind_humidity:
+      initialConfig.show_wind_humidity !== undefined
+        ? initialConfig.show_wind_humidity
+        : "auto",
+    show_forecast:
+      initialConfig.show_forecast !== undefined ? initialConfig.show_forecast : true,
   };
 
   const container = document.createElement("div");
@@ -57,7 +75,7 @@ export function createWeatherWidget(
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: clamp(10px, min(4.2cqw, 5cqh), 24px) clamp(12px, min(5cqw, 6cqh), 28px);
+    padding: clamp(8px, min(4cqw, 4.5cqh), 22px) clamp(10px, min(4.8cqw, 5.5cqh), 26px);
     box-sizing: border-box;
     border-radius: inherit;
     color: #ffffff;
@@ -67,8 +85,60 @@ export function createWeatherWidget(
   let weatherData: WeatherData | null = null;
   let pollInterval: number | null = null;
   let isDestroyed = false;
+  let observedW = 0;
+  let observedH = 0;
 
   const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+  function getGridSpans(): { cols: number; rows: number } {
+    const host = container.parentElement || container;
+    const cols = parseInt(host.style.getPropertyValue("--widget-cols") || "5", 10) || 5;
+    const rows = parseInt(host.style.getPropertyValue("--widget-rows") || "3", 10) || 3;
+    return { cols, rows };
+  }
+
+  function resolveEffectiveLayout() {
+    const { cols, rows } = getGridSpans();
+    let mode = config.layout_mode;
+
+    if (mode === "auto") {
+      if (rows === 1 || (cols <= 3 && rows <= 2) || (observedH > 0 && observedH < 88)) {
+        mode = "mini_badge";
+      } else if (
+        (cols >= 6 && rows <= 2) ||
+        (observedW > 0 && observedH > 0 && observedW / observedH >= 2.1 && observedH < 175)
+      ) {
+        mode = "wide_split";
+      } else if (rows <= 2 || (observedH > 0 && observedH < 155)) {
+        mode = "compact";
+      } else {
+        mode = "standard";
+      }
+    }
+
+    const resolveTri = (
+      val: "auto" | "show" | "hide" | boolean,
+      autoDefault: boolean
+    ): boolean => {
+      if (val === "show" || val === true) return true;
+      if (val === "hide" || val === false) return false;
+      return autoDefault;
+    };
+
+    const showLocation = resolveTri(config.show_location, mode !== "mini_badge" || cols >= 3);
+    const showCondition = resolveTri(config.show_condition, mode !== "mini_badge");
+    const showWindHumidity = resolveTri(
+      config.show_wind_humidity,
+      mode === "standard" || mode === "wide_split"
+    );
+    const showForecast = resolveTri(
+      config.show_forecast,
+      mode === "standard" || mode === "wide_split"
+    );
+
+    container.dataset.weatherMode = mode;
+    return { mode, showLocation, showCondition, showWindHumidity, showForecast };
+  }
 
   function getCacheKey(): string {
     return `syllacast_weather_${config.latitude.toFixed(2)}_${config.longitude.toFixed(2)}_${config.unit}`;
@@ -113,7 +183,7 @@ export function createWeatherWidget(
         }
         renderView();
       }
-    } catch (e) {
+    } catch {
       if (!weatherData) {
         renderError();
       }
@@ -130,16 +200,48 @@ export function createWeatherWidget(
     const info = getWeatherInfo(current.weather_code);
     const tempUnit = config.unit === "fahrenheit" ? "°F" : "°C";
     const speedUnit = config.unit === "fahrenheit" ? "mph" : "km/h";
+    const { mode, showLocation, showCondition, showWindHumidity, showForecast } =
+      resolveEffectiveLayout();
+
+    if (mode === "mini_badge") {
+      container.style.flexDirection = "row";
+      container.style.alignItems = "center";
+      container.style.justifyContent = "center";
+      container.style.gap = "10px";
+      container.innerHTML = `
+        <div style="width: clamp(24px, min(18cqw, 55cqh), 42px); height: clamp(24px, min(18cqw, 55cqh), 42px); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          ${info.largeIconSvg}
+        </div>
+        <div style="display: flex; flex-direction: column; min-width: 0;">
+          <div style="font-size: clamp(1rem, min(14cqw, 40cqh), 1.85rem); font-weight: 800; line-height: 1.05;">
+            ${Math.round(current.temperature_2m)}${tempUnit}
+          </div>
+          ${
+            showLocation
+              ? `<div style="font-size: clamp(0.62rem, min(7cqw, 18cqh), 0.82rem); font-weight: 600; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(
+                  config.location_name
+                )}</div>`
+              : ""
+          }
+        </div>
+      `;
+      return;
+    }
 
     let forecastHtml = "";
-    if (config.show_forecast && weatherData.daily && weatherData.daily.time) {
-      const days = weatherData.daily.time.slice(1, 4); // next 3 days
+    if (showForecast && weatherData.daily && weatherData.daily.time) {
+      const days = weatherData.daily.time.slice(1, 4);
       const codes = weatherData.daily.weather_code.slice(1, 4);
       const maxs = weatherData.daily.temperature_2m_max.slice(1, 4);
       const mins = weatherData.daily.temperature_2m_min.slice(1, 4);
 
+      const isSplit = mode === "wide_split";
       forecastHtml = `
-        <div class="WeatherForecastRow" style="display: flex; justify-content: space-between; gap: clamp(6px, 2.5cqw, 16px); margin-top: auto; padding-top: clamp(6px, 3cqh, 14px); border-top: 1px solid rgba(255, 255, 255, 0.12);">
+        <div class="WeatherForecastRow" style="display: flex; justify-content: space-between; align-items: center; gap: clamp(6px, 2cqw, 14px); ${
+          isSplit
+            ? "flex: 1.15; padding-left: clamp(10px, 3cqw, 20px); border-left: 1px solid rgba(255, 255, 255, 0.12); height: 100%;"
+            : "margin-top: auto; padding-top: clamp(6px, 2.8cqh, 14px); border-top: 1px solid rgba(255, 255, 255, 0.12);"
+        }">
           ${days
             .map((dateStr, i) => {
               const dayName = new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, {
@@ -148,11 +250,11 @@ export function createWeatherWidget(
               const dayInfo = getWeatherInfo(codes[i]);
               return `
                 <div style="display: flex; flex-direction: column; align-items: center; gap: clamp(2px, 1.2cqh, 6px); flex: 1;">
-                  <span style="font-size: clamp(0.68rem, min(3.4cqw, 5.2cqh), 0.95rem); opacity: 0.7; font-weight: 600;">${dayName}</span>
-                  <div style="width: clamp(18px, min(7.5cqw, 11cqh), 34px); height: clamp(18px, min(7.5cqw, 11cqh), 34px); display: flex; align-items: center; justify-content: center;">
+                  <span style="font-size: clamp(0.66rem, min(3.2cqw, 5cqh), 0.92rem); opacity: 0.7; font-weight: 600;">${dayName}</span>
+                  <div style="width: clamp(18px, min(7cqw, 11cqh), 32px); height: clamp(18px, min(7cqw, 11cqh), 32px); display: flex; align-items: center; justify-content: center;">
                     ${dayInfo.iconSvg}
                   </div>
-                  <span style="font-size: clamp(0.72rem, min(3.6cqw, 5.5cqh), 1rem); font-weight: 700;">
+                  <span style="font-size: clamp(0.7rem, min(3.4cqw, 5.2cqh), 0.96rem); font-weight: 700;">
                     ${Math.round(maxs[i])}° <span style="opacity: 0.55; font-weight: 500;">${Math.round(mins[i])}°</span>
                   </span>
                 </div>
@@ -163,37 +265,63 @@ export function createWeatherWidget(
       `;
     }
 
-    container.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-        <div style="min-width: 0;">
-          <div style="font-size: clamp(0.7rem, min(3.8cqw, 6cqh), 1.05rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.68; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${escapeHtml(config.location_name)}
-          </div>
-          <div style="font-size: clamp(1.5rem, min(11.5cqw, 22cqh), 3.6rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;">
-            ${Math.round(current.temperature_2m)}${tempUnit}
-          </div>
-          <div style="font-size: clamp(0.78rem, min(4.2cqw, 6.8cqh), 1.15rem); font-weight: 500; opacity: 0.88; margin-top: clamp(2px, 1.2cqh, 6px);">
-            ${info.label}
-          </div>
-        </div>
-        <div style="width: clamp(36px, min(17cqw, 26cqh), 78px); height: clamp(36px, min(17cqw, 26cqh), 78px); display: flex; align-items: center; justify-content: center; flex-shrink: 0; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.35));">
-          ${info.largeIconSvg}
-        </div>
-      </div>
-
-      <div style="display: flex; align-items: center; gap: clamp(10px, 4cqw, 20px); font-size: clamp(0.7rem, min(3.6cqw, 5.8cqh), 0.98rem); opacity: 0.78; margin-top: clamp(4px, 1.5cqh, 10px);">
-        <span style="display: flex; align-items: center; gap: 5px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>
+    const windHumidityHtml = showWindHumidity
+      ? `
+      <div class="WeatherDetailsRow" style="display: flex; align-items: center; gap: clamp(8px, 3.5cqw, 18px); font-size: clamp(0.68rem, min(3.4cqw, 5.5cqh), 0.95rem); opacity: 0.78; margin-top: clamp(3px, 1.4cqh, 8px);">
+        <span style="display: flex; align-items: center; gap: 4px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>
           ${Math.round(current.wind_speed_10m)} ${speedUnit}
         </span>
-        <span style="display: flex; align-items: center; gap: 5px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+        <span style="display: flex; align-items: center; gap: 4px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
           ${Math.round(current.relative_humidity_2m)}%
         </span>
-      </div>
+      </div>`
+      : "";
 
-      ${forecastHtml}
+    const primaryBlockHtml = `
+      <div style="display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div style="min-width: 0;">
+            ${
+              showLocation
+                ? `<div style="font-size: clamp(0.68rem, min(3.6cqw, 5.8cqh), 1.02rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.68; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escapeHtml(config.location_name)}
+                  </div>`
+                : ""
+            }
+            <div style="font-size: clamp(1.35rem, min(11cqw, 22cqh), 3.4rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;">
+              ${Math.round(current.temperature_2m)}${tempUnit}
+            </div>
+            ${
+              showCondition
+                ? `<div style="font-size: clamp(0.75rem, min(4cqw, 6.5cqh), 1.1rem); font-weight: 500; opacity: 0.88; margin-top: 2px;">
+                    ${info.label}
+                  </div>`
+                : ""
+            }
+          </div>
+          <div style="width: clamp(32px, min(16cqw, 26cqh), 72px); height: clamp(32px, min(16cqw, 26cqh), 72px); display: flex; align-items: center; justify-content: center; flex-shrink: 0; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.35));">
+            ${info.largeIconSvg}
+          </div>
+        </div>
+        ${windHumidityHtml}
+      </div>
     `;
+
+    if (mode === "wide_split") {
+      container.style.flexDirection = "row";
+      container.style.alignItems = "center";
+      container.style.justifyContent = "space-between";
+      container.style.gap = "14px";
+      container.innerHTML = `${primaryBlockHtml}${forecastHtml}`;
+    } else {
+      container.style.flexDirection = "column";
+      container.style.alignItems = "stretch";
+      container.style.justifyContent = "space-between";
+      container.style.gap = "4px";
+      container.innerHTML = `${primaryBlockHtml}${forecastHtml}`;
+    }
   }
 
   function renderLoading() {
@@ -214,6 +342,18 @@ export function createWeatherWidget(
     `;
   }
 
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            observedW = entry.contentRect.width;
+            observedH = entry.contentRect.height;
+          }
+          if (weatherData) renderView();
+        })
+      : null;
+  resizeObserver?.observe(container);
+
   function updateConfig(newConfig: Record<string, any>) {
     const latChanged = typeof newConfig.latitude === "number" && newConfig.latitude !== config.latitude;
     const lonChanged = typeof newConfig.longitude === "number" && newConfig.longitude !== config.longitude;
@@ -224,7 +364,27 @@ export function createWeatherWidget(
       latitude: typeof newConfig.latitude === "number" ? newConfig.latitude : config.latitude,
       longitude: typeof newConfig.longitude === "number" ? newConfig.longitude : config.longitude,
       unit: newConfig.unit === "fahrenheit" ? "fahrenheit" : "celsius",
-      show_forecast: newConfig.show_forecast !== undefined ? Boolean(newConfig.show_forecast) : config.show_forecast,
+      layout_mode: ["auto", "mini_badge", "compact", "wide_split", "standard"].includes(
+        newConfig.layout_mode
+      )
+        ? newConfig.layout_mode
+        : config.layout_mode,
+      show_location:
+        newConfig.show_location !== undefined
+          ? newConfig.show_location
+          : config.show_location,
+      show_condition:
+        newConfig.show_condition !== undefined
+          ? newConfig.show_condition
+          : config.show_condition,
+      show_wind_humidity:
+        newConfig.show_wind_humidity !== undefined
+          ? newConfig.show_wind_humidity
+          : config.show_wind_humidity,
+      show_forecast:
+        newConfig.show_forecast !== undefined
+          ? newConfig.show_forecast
+          : config.show_forecast,
     };
 
     if (latChanged || lonChanged || unitChanged) {
@@ -239,6 +399,7 @@ export function createWeatherWidget(
 
   function destroy() {
     isDestroyed = true;
+    resizeObserver?.disconnect();
     if (pollInterval) {
       window.clearInterval(pollInterval);
       pollInterval = null;
@@ -402,19 +563,58 @@ export function createWeatherWidget(
     });
     form.appendChild(unitGroup);
 
-    // Show Forecast Toggle
-    const forecastGroup = document.createElement("div");
-    forecastGroup.style.cssText = "display: flex; align-items: center; gap: 10px; margin-top: 4px;";
-    forecastGroup.innerHTML = `
-      <input type="checkbox" id="weather_forecast_chk" ${liveConfig.show_forecast ? "checked" : ""} style="width: 18px; height: 18px; accent-color: #38bdf8; cursor: pointer;" />
-      <label for="weather_forecast_chk" style="cursor: pointer; font-size: 0.85rem; color: #e2e8f0;">Show 3-Day Forecast</label>
+    // Display Layout Mode
+    const modeGroup = document.createElement("div");
+    modeGroup.innerHTML = `
+      <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.85rem; color: #94a3b8;">Display Layout Mode</label>
+      <select class="StudioFormSelect WeatherLayoutSelect" style="width: 100%;">
+        <option value="auto" ${liveConfig.layout_mode === "auto" ? "selected" : ""}>Auto (Smart Responsive by Size)</option>
+        <option value="mini_badge" ${liveConfig.layout_mode === "mini_badge" ? "selected" : ""}>Mini Badge (Icon & Temp)</option>
+        <option value="compact" ${liveConfig.layout_mode === "compact" ? "selected" : ""}>Compact Card (Current Weather)</option>
+        <option value="wide_split" ${liveConfig.layout_mode === "wide_split" ? "selected" : ""}>Wide Split (Side-by-Side Forecast)</option>
+        <option value="standard" ${liveConfig.layout_mode === "standard" ? "selected" : ""}>Full Card (Current + Details + Forecast)</option>
+      </select>
     `;
-    const fChk = forecastGroup.querySelector<HTMLInputElement>("input")!;
-    fChk.addEventListener("change", () => {
-      liveConfig.show_forecast = fChk.checked;
+    const modeSel = modeGroup.querySelector<HTMLSelectElement>(".WeatherLayoutSelect")!;
+    modeSel.addEventListener("change", () => {
+      liveConfig.layout_mode = modeSel.value as any;
       onChange({ ...liveConfig });
     });
-    form.appendChild(forecastGroup);
+    form.appendChild(modeGroup);
+
+    // Individual Element Visibility Overrides
+    const createTriRow = (
+      label: string,
+      key: "show_location" | "show_condition" | "show_wind_humidity" | "show_forecast"
+    ) => {
+      const row = document.createElement("div");
+      row.className = "StudioToggleRow";
+      const val =
+        liveConfig[key] === true
+          ? "show"
+          : liveConfig[key] === false
+          ? "hide"
+          : liveConfig[key] || "auto";
+      row.innerHTML = `
+        <span class="StudioToggleLabel">${label}</span>
+        <select class="StudioFormSelect" style="width: 140px; padding: 5px 8px;">
+          <option value="auto" ${val === "auto" ? "selected" : ""}>Auto (Smart)</option>
+          <option value="show" ${val === "show" ? "selected" : ""}>Always Show</option>
+          <option value="hide" ${val === "hide" ? "selected" : ""}>Always Hide</option>
+        </select>
+      `;
+      const sel = row.querySelector("select")!;
+      sel.addEventListener("change", () => {
+        (liveConfig as any)[key] = sel.value;
+        onChange({ ...liveConfig });
+      });
+      return row;
+    };
+
+    form.appendChild(createTriRow("Location Name", "show_location"));
+    form.appendChild(createTriRow("Weather Condition Text", "show_condition"));
+    form.appendChild(createTriRow("Wind Speed & Humidity", "show_wind_humidity"));
+    form.appendChild(createTriRow("3-Day Forecast", "show_forecast"));
 
     return form;
   }

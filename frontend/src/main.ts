@@ -87,6 +87,8 @@ document.body.appendChild(kioskUpdateBanner.element);
 const customizeStudio = createCustomizeStudio({
   clockElement: kioskClock.element,
   upNextElement: kioskUpNext.element,
+  clockController: kioskClock,
+  upNextController: kioskUpNext,
   getInterpolatedPositionMs: () => timeline.getInterpolatedPositionMs(),
   sendCommand: (cmd) => {
     if (activeWs && activeWs.readyState === WebSocket.OPEN) {

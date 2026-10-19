@@ -1503,6 +1503,8 @@ fn test_legacy_settings_backward_compatibility() {
     // Verify "default" preset
     let default_profile = &settings.layout_profiles[0];
     assert_eq!(default_profile.name, "Standard Kiosk");
+    assert_eq!(default_profile.target_aspect_ratio, "any");
+    assert!(settings.auto_switch_aspect_ratio);
     assert_eq!(default_profile.widgets.len(), 4);
     assert_eq!(default_profile.widgets[0].id, "nowbar-1");
     assert_eq!(default_profile.widgets[0].widget_type, WidgetType::Nowbar);
@@ -1511,6 +1513,10 @@ fn test_legacy_settings_backward_compatibility() {
     assert_eq!(default_profile.widgets[0].w, 9);
     assert_eq!(default_profile.widgets[0].h, 10);
     assert!(!default_profile.widgets[0].show_glass);
+
+    assert_eq!(default_profile.widgets[1].id, "lyrics-1");
+    assert_eq!(default_profile.widgets[1].h, 12);
+    assert_eq!(default_profile.widgets[1].config["full_height_bleed"], true);
 
     // Verify "living_room_tv" preset
     let tv_profile = &settings.layout_profiles[1];
@@ -1584,6 +1590,7 @@ fn test_layout_profiles_and_widget_instances_roundtrip() {
     let custom_profile = LayoutProfile {
         id: "custom_studio".to_string(),
         name: "Custom Studio".to_string(),
+        target_aspect_ratio: "5:3".to_string(),
         widgets: vec![WidgetInstance {
             id: "note-guest".to_string(),
             widget_type: WidgetType::Note,
@@ -1601,6 +1608,7 @@ fn test_layout_profiles_and_widget_instances_roundtrip() {
 
     let mut settings = KioskSettings {
         active_profile_id: "custom_studio".to_string(),
+        auto_switch_aspect_ratio: true,
         ..Default::default()
     };
     settings.layout_profiles.push(custom_profile.clone());
@@ -1610,6 +1618,7 @@ fn test_layout_profiles_and_widget_instances_roundtrip() {
         serde_json::from_str(&json).expect("deserialize settings roundtrip");
 
     assert_eq!(deserialized.active_profile_id, "custom_studio");
+    assert!(deserialized.auto_switch_aspect_ratio);
     assert_eq!(deserialized.layout_profiles.len(), 5);
     assert_eq!(
         deserialized.layout_profiles.last().unwrap(),
